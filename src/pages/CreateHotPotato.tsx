@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { UsernameGate } from '../components/UsernameGate'
 import { generateCode, createPlayerId } from '../lib/codes'
 import { getLastTimerRange, saveTimerRange } from '../lib/storage'
+import { getActiveParty, setActiveParty } from '../lib/party'
 import { createHotPotatoRoom } from '../rooms/factory'
 
 const PRESETS = [
@@ -15,6 +16,7 @@ export function CreateHotPotato() {
   const navigate = useNavigate()
   const last = getLastTimerRange()
   const [name, setName] = useState<string | null>(null)
+  const [title, setTitle] = useState('Hot Potato')
   const [minSec, setMinSec] = useState(last.minSec)
   const [maxSec, setMaxSec] = useState(last.maxSec)
 
@@ -39,9 +41,28 @@ export function CreateHotPotato() {
     saveTimerRange(lo, hi)
     const code = generateCode()
     const host = { id: createPlayerId(), name, joinedAt: Date.now() }
-    const room = createHotPotatoRoom({ code, host, minSec: lo, maxSec: hi })
+    const party = getActiveParty()
+    const room = createHotPotatoRoom({
+      code,
+      host,
+      minSec: lo,
+      maxSec: hi,
+      title: title.trim() || 'Hot Potato',
+      partyId: party?.partyId,
+    })
     sessionStorage.setItem(`fg_seed_${code}`, JSON.stringify(room))
     sessionStorage.setItem(`fg_name_${code}`, name)
+    if (party) {
+      setActiveParty({ partyId: party.partyId, hostId: host.id, code })
+      // BroadcastChannel pull for same-browser party members
+      try {
+        const ch = new BroadcastChannel(`fg-party-${party.partyId}`)
+        ch.postMessage({ type: 'pull', path: `/room/${code}` })
+        ch.close()
+      } catch {
+        // ignore
+      }
+    }
     navigate(`/room/${code}?host=1`)
   }
 
@@ -52,6 +73,10 @@ export function CreateHotPotato() {
       </Link>
       <div className="panel">
         <h1>Timer range</h1>
+        <label className="field">
+          <span>Game title</span>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={48} />
+        </label>
         <p className="muted">
           The fuse ends at a random time inside this window. Nobody sees the real countdown.
         </p>
