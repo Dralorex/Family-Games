@@ -865,3 +865,61 @@ button {
   display: grid;
   gap: 0.55rem;
 }
+
+.auth-banner {
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.auth-banner-blocked {
+  background: rgba(180, 35, 24, 0.12);
+  border: 1.5px solid rgba(180, 35, 24, 0.35);
+  color: var(--ink);
+}
+
+.auth-banner-live {
+  background: rgba(154, 103, 0, 0.14);
+  border: 1.5px solid rgba(154, 103, 0, 0.35);
+}
+
+.auth-hints {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.auth-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.account-tabs {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.check-row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.check-row input {
+  margin-top: 0.2rem;
+}
+
+.auth-home-note {
+  margin-top: 0.85rem !important;
+  font-size: 0.9rem !important;
+  opacity: 0.85;
+}
+
+.account-page .panel {
+  gap: 1rem;
+}

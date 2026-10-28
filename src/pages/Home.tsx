@@ -26,7 +26,14 @@ export function Home() {
           <Link className="btn secondary large" to="/scorecards">
             Scorecards
           </Link>
+          <Link className="btn secondary large" to="/account">
+            Account
+          </Link>
         </div>
+        <p className="home-support auth-home-note">
+          Account sign-in is scaffolded only — do not use it until Firebase / DB + email codes are
+          configured.
+        </p>
       </div>
     </main>
   )
