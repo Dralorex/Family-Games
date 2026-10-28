@@ -60,6 +60,26 @@ function copyLastPlaceScores(
   return { ...room, scores: { ...room.scores, [newPlayerId]: copied } }
 }
 
+/** Keep past rounds; clear the open round so a returning player enters their own score. */
+function continueFromCurrentRound(room: ScorecardRoom, playerId: string): ScorecardRoom {
+  if (room.status !== 'playing') return room
+  const existing = room.scores[playerId]
+  if (!existing || existing[room.currentRound] === undefined) return room
+  const { [room.currentRound]: _dropped, ...kept } = existing
+  return {
+    ...room,
+    scores: {
+      ...room.scores,
+      [playerId]: kept,
+    },
+  }
+}
+
+function findPlayerByName(room: RoomState, name: string): RoomPlayer | undefined {
+  const needle = name.trim().toLowerCase()
+  return playersList(room).find((p) => p.name.trim().toLowerCase() === needle)
+}
+
 export function applyAction(room: RoomState, action: RoomAction, now = Date.now()): RoomState {
   switch (action.type) {
     case 'hello':
@@ -68,7 +88,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
     case 'join': {
       const existingById = room.players[action.player.id]
       if (existingById) {
-        return {
+        let next: RoomState = {
           ...room,
           players: {
             ...room.players,
@@ -79,11 +99,25 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
             },
           },
         }
+        if (next.kind === 'scorecard' && existingById.left) {
+          next = continueFromCurrentRound(next, action.player.id)
+        }
+        return next
       }
-      // Unique names — block if taken by anyone still on the roster (including left)
-      if (nameTaken(room.players, action.player.name)) {
-        return room
+
+      // Same name as a left (or existing) seat → revive that seat instead of blocking
+      const byName = findPlayerByName(room, action.player.name)
+      if (byName) {
+        if (!byName.left && byName.id !== action.player.id) {
+          return room
+        }
+        return applyAction(room, {
+          type: 'rejoin',
+          name: action.player.name,
+          playerId: action.player.id,
+        }, now)
       }
+
       if (room.kind === 'hot-potato' && Object.keys(room.players).length >= 50) {
         return room
       }
@@ -101,7 +135,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
               : [...hp.aliveIds, action.player.id]
         return { ...hp, aliveIds }
       }
-      // Mid-game join: match last place scores for completed rounds
+      // Brand-new mid-game join: match last place for completed rounds only
       if (room.kind === 'scorecard' && room.status === 'playing' && room.completedRounds >= 1) {
         next = copyLastPlaceScores(next as ScorecardRoom, action.player.id, room.completedRounds)
       }
@@ -109,9 +143,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
     }
 
     case 'rejoin': {
-      const match = playersList(room).find(
-        (p) => p.name.trim().toLowerCase() === action.name.trim().toLowerCase(),
-      )
+      const match = findPlayerByName(room, action.name)
       if (!match) return room
       const revived: RoomPlayer = {
         ...match,
@@ -120,18 +152,22 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
         joinedAt: match.joinedAt,
       }
       const { [match.id]: _old, ...rest } = room.players
-      // Move scores if id changed
       let nextRoom: RoomState = {
         ...room,
         players: { ...rest, [action.playerId]: revived },
       }
-      if (room.kind === 'scorecard' && room.scores[match.id] && match.id !== action.playerId) {
-        const sc = nextRoom as ScorecardRoom
-        const { [match.id]: oldScores, ...scoreRest } = sc.scores
-        nextRoom = {
-          ...sc,
-          scores: { ...scoreRest, [action.playerId]: oldScores ?? {} },
+      if (room.kind === 'scorecard') {
+        let sc = nextRoom as ScorecardRoom
+        if (room.scores[match.id] && match.id !== action.playerId) {
+          const { [match.id]: oldScores, ...scoreRest } = sc.scores
+          sc = {
+            ...sc,
+            scores: { ...scoreRest, [action.playerId]: oldScores ?? {} },
+          }
         }
+        // Returning players keep past rounds, enter the open round themselves
+        sc = continueFromCurrentRound(sc, action.playerId)
+        nextRoom = sc
       }
       return nextRoom
     }

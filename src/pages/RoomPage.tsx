@@ -41,9 +41,10 @@ export function RoomPage() {
   // Resume: offer names already in the room for this device
   const rosterNames = room ? Object.values(room.players).map((p) => p.name) : []
 
+  // Join/rejoin as soon as a name is chosen — revive left seats so they are no longer "out"
   useEffect(() => {
     if (!name) return
-    if (status !== 'connected' && status !== 'local') return
+
     if (!room) {
       send({
         type: 'join',
@@ -51,24 +52,39 @@ export function RoomPage() {
       })
       return
     }
+
+    const self = room.players[playerId]
+    if (self) {
+      if (self.left) {
+        send({
+          type: 'join',
+          player: { id: playerId, name, joinedAt: self.joinedAt },
+        })
+      }
+      return
+    }
+
     const existing = Object.values(room.players).find(
       (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
     )
-    if (existing && existing.id !== playerId) {
+    if (existing) {
+      // Same name (including a left seat) → rejoin that roster row
       send({ type: 'rejoin', name, playerId })
-    } else if (!room.players[playerId]) {
-      if (nameTaken(room.players, name, playerId)) {
-        setNameError('That name is already taken. Pick another or rejoin with the exact same name.')
-        setName(null)
-        return
-      }
-      send({
-        type: 'join',
-        player: { id: playerId, name, joinedAt: Date.now() },
-      })
+      return
     }
+
+    if (nameTaken(room.players, name, playerId)) {
+      setNameError('That name is already taken. Pick another or rejoin with the exact same name.')
+      setName(null)
+      return
+    }
+
+    send({
+      type: 'join',
+      player: { id: playerId, name, joinedAt: Date.now() },
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, name, playerId, room?.code])
+  }, [name, playerId, room?.code, room?.players, status])
 
   if (!name) {
     return (
