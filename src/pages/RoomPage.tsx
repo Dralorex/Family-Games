@@ -317,7 +317,9 @@ function ScorecardView(props: {
   }, [myRoundScore, room.currentRound])
 
   const submitScore = () => {
-    const value = Number(draft)
+    const trimmed = draft.trim()
+    if (trimmed === '') return
+    const value = Number(trimmed)
     if (!Number.isFinite(value)) return
     send({ type: 'set-score', fromId: playerId, round: room.currentRound, value })
   }
