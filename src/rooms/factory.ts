@@ -8,14 +8,18 @@ export function createHotPotatoRoom(opts: {
   host: RoomPlayer
   minSec: number
   maxSec: number
+  title?: string
+  partyId?: string
 }): HotPotatoRoom {
   return {
     v: 1,
     kind: 'hot-potato',
     code: opts.code,
+    title: opts.title?.trim() || 'Hot Potato',
     hostId: opts.host.id,
+    partyId: opts.partyId || opts.code,
     createdAt: Date.now(),
-    players: { [opts.host.id]: opts.host },
+    players: { [opts.host.id]: { ...opts.host, left: false } },
     status: 'lobby',
     timer: defaultRangeTimer(opts.minSec, opts.maxSec),
     aliveIds: [opts.host.id],
@@ -28,6 +32,8 @@ export function createScorecardRoom(opts: {
   host: RoomPlayer
   templateId: ScorecardTemplateId
   pointLimit?: number
+  title?: string
+  partyId?: string
 }): ScorecardRoom {
   const template = getTemplate(opts.templateId)
   if (!template) {
@@ -37,11 +43,13 @@ export function createScorecardRoom(opts: {
     v: 1,
     kind: 'scorecard',
     code: opts.code,
+    title: opts.title?.trim() || template.name,
     hostId: opts.host.id,
+    partyId: opts.partyId || opts.code,
     createdAt: Date.now(),
     templateId: template.id,
     templateName: template.name,
-    players: { [opts.host.id]: opts.host },
+    players: { [opts.host.id]: { ...opts.host, left: false } },
     status: 'lobby',
     currentRound: 1,
     completedRounds: 0,

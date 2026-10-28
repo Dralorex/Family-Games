@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { connectRoomSync, type RoomSync, type SyncStatus } from '../rooms/mqttSync'
+import { normalizeRoom } from '../rooms/normalize'
 import type { RoomAction, RoomState } from '../rooms/types'
 
 export function useRoom(opts: {
@@ -10,7 +11,8 @@ export function useRoom(opts: {
   enabled?: boolean
 }) {
   const { code, playerId, isCreator, initialState, enabled = true } = opts
-  const [room, setRoom] = useState<RoomState | null>(initialState ?? null)
+  const seeded = initialState ? normalizeRoom(initialState) : null
+  const [room, setRoom] = useState<RoomState | null>(seeded)
   const [status, setStatus] = useState<SyncStatus>('connecting')
   const syncRef = useRef<RoomSync | null>(null)
 
@@ -21,12 +23,12 @@ export function useRoom(opts: {
       code,
       playerId,
       isCreator,
-      initialState,
+      initialState: seeded ?? undefined,
       onState: (state) => {
-        setRoom(state)
-        // Keep seed fresh so StrictMode remounts don't wipe an in-progress game
+        const normalized = normalizeRoom(state)
+        setRoom(normalized)
         try {
-          sessionStorage.setItem(`fg_seed_${code}`, JSON.stringify(state))
+          sessionStorage.setItem(`fg_seed_${code}`, JSON.stringify(normalized))
         } catch {
           // ignore quota
         }

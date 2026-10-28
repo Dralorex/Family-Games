@@ -5,10 +5,17 @@ import { unlockAudio } from '../audio/alarm'
 export function UsernameGate(props: {
   title: string
   subtitle?: string
+  suggestedNames?: string[]
   onSubmit: (name: string) => void
 }) {
   const recent = getRecentNames()
-  const [name, setName] = useState(recent[0] ?? '')
+  const suggestions = [
+    ...(props.suggestedNames ?? []),
+    ...recent.filter(
+      (n) => !(props.suggestedNames ?? []).some((s) => s.toLowerCase() === n.toLowerCase()),
+    ),
+  ]
+  const [name, setName] = useState(suggestions[0] ?? '')
   const [error, setError] = useState('')
 
   const submit = async (value: string) => {
@@ -35,9 +42,9 @@ export function UsernameGate(props: {
       <h1>{props.title}</h1>
       {props.subtitle ? <p className="muted">{props.subtitle}</p> : null}
 
-      {recent.length > 0 ? (
-        <div className="chip-row" aria-label="Recent names">
-          {recent.map((n) => (
+      {suggestions.length > 0 ? (
+        <div className="chip-row" aria-label="Names">
+          {suggestions.map((n) => (
             <button key={n} type="button" className="chip" onClick={() => void submit(n)}>
               {n}
             </button>

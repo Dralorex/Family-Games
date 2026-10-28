@@ -38,34 +38,44 @@ export function computeStandings(
   return standings
 }
 
+export function activePlayers<T extends { left?: boolean }>(players: T[]): T[] {
+  return players.filter((p) => !p.left)
+}
+
 export function missingScorePlayerIds(
-  players: Player[],
+  players: { id: string; left?: boolean }[],
   scores: ScoreMap,
   round: number,
 ): string[] {
-  return players.filter((p) => scores[p.id]?.[round] === undefined).map((p) => p.id)
+  return activePlayers(players)
+    .filter((p) => scores[p.id]?.[round] === undefined)
+    .map((p) => p.id)
 }
 
-export function allScoresEntered(players: Player[], scores: ScoreMap, round: number): boolean {
+export function allScoresEntered(
+  players: { id: string; left?: boolean }[],
+  scores: ScoreMap,
+  round: number,
+): boolean {
   return missingScorePlayerIds(players, scores, round).length === 0
 }
 
-/** Place is shown from round 2 onward (skip between round 1 and 2). */
-export function shouldShowPlace(currentRound: number, scoresSubmittedForRound: number): boolean {
-  // After round 2 scores exist / when viewing round >= 2
-  return scoresSubmittedForRound >= 2 || currentRound > 2
+/** Hero total shows as soon as round 1 has any scores / after R1. */
+export function shouldShowHeroTotal(completedRounds: number, hasAnyScore: boolean): boolean {
+  return completedRounds >= 1 || hasAnyScore
 }
 
-export function shouldShowRunningTotals(completedRounds: number): boolean {
-  // No totals interstitial between round 1 and 2
+/** Place / 1st bubble once we have at least round 1 scores in. */
+export function shouldShowPlace(completedRounds: number, hasRound1Scores: boolean): boolean {
+  return completedRounds >= 1 || hasRound1Scores
+}
+
+/** Running sum rows in the transposed table after round 2. */
+export function shouldShowRunningSums(completedRounds: number): boolean {
   return completedRounds >= 2
 }
 
-export function limitReached(
-  players: Player[],
-  scores: ScoreMap,
-  pointLimit: number,
-): boolean {
+export function limitReached(players: Player[], scores: ScoreMap, pointLimit: number): boolean {
   return players.some((p) => playerTotal(scores, p.id) >= pointLimit)
 }
 
@@ -90,7 +100,45 @@ export function shouldEndGame(opts: {
 
 export function topThree(standings: Standing[]): Standing[] {
   if (standings.length === 0) return []
-  const thirdPlace = standings.find((s) => s.place === 3)?.place ?? standings[standings.length - 1]!.place
+  const thirdPlace =
+    standings.find((s) => s.place === 3)?.place ?? standings[standings.length - 1]!.place
   const cutoff = Math.min(3, thirdPlace)
   return standings.filter((s) => s.place <= cutoff)
+}
+
+/** Worst score for a round given win direction (used for leavers). */
+export function worstScoreForRound(
+  scores: ScoreMap,
+  playerIds: string[],
+  round: number,
+  winDirection: WinDirection,
+): number {
+  const values = playerIds
+    .map((id) => scores[id]?.[round])
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+  if (values.length === 0) return 0
+  return winDirection === 'low' ? Math.max(...values) : Math.min(...values)
+}
+
+export function lastPlacePlayerId(
+  players: Player[],
+  scores: ScoreMap,
+  winDirection: WinDirection,
+  throughRound?: number,
+): string | null {
+  const standings = computeStandings(players, scores, winDirection, throughRound)
+  if (standings.length === 0) return null
+  return standings[standings.length - 1]!.playerId
+}
+
+export function nameTaken(
+  players: Record<string, { id?: string; name: string; left?: boolean }>,
+  name: string,
+  exceptId?: string,
+): boolean {
+  const needle = name.trim().toLowerCase()
+  return Object.entries(players).some(([id, p]) => {
+    const playerId = p.id ?? id
+    return playerId !== exceptId && p.name.trim().toLowerCase() === needle
+  })
 }
