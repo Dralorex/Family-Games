@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { UsernameGate } from '../components/UsernameGate'
 import { getTemplate } from '../core/score/templates'
 import type { ScorecardTemplateId } from '../core/score/types'
-import { createPlayerId, generateCode } from '../lib/codes'
+import { createPlayerId, createSessionId, generateCode } from '../lib/codes'
 import { getActiveParty, setActiveParty } from '../lib/party'
 import { createScorecardRoom } from '../rooms/factory'
 
@@ -37,7 +37,12 @@ export function CreateScorecard() {
 
   const start = () => {
     const code = generateCode()
-    const host = { id: createPlayerId(), name, joinedAt: Date.now() }
+    const host = {
+      id: createPlayerId(),
+      name,
+      joinedAt: Date.now(),
+      sessionId: createSessionId(code),
+    }
     const party = getActiveParty()
     const room = createScorecardRoom({
       code,

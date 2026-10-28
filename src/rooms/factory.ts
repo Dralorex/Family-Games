@@ -17,6 +17,7 @@ export function createHotPotatoRoom(opts: {
     code: opts.code,
     title: opts.title?.trim() || 'Hot Potato',
     hostId: opts.host.id,
+    creatorName: opts.host.name,
     partyId: opts.partyId || opts.code,
     createdAt: Date.now(),
     players: { [opts.host.id]: { ...opts.host, left: false } },
@@ -24,6 +25,7 @@ export function createHotPotatoRoom(opts: {
     timer: defaultRangeTimer(opts.minSec, opts.maxSec),
     aliveIds: [opts.host.id],
     placements: [],
+    pendingHostReturn: null,
   }
 }
 
@@ -45,6 +47,7 @@ export function createScorecardRoom(opts: {
     code: opts.code,
     title: opts.title?.trim() || template.name,
     hostId: opts.host.id,
+    creatorName: opts.host.name,
     partyId: opts.partyId || opts.code,
     createdAt: Date.now(),
     templateId: template.id,
@@ -61,5 +64,6 @@ export function createScorecardRoom(opts: {
       template.endMode === 'limit'
         ? opts.pointLimit ?? template.defaultPointLimit ?? 100
         : undefined,
+    pendingHostReturn: null,
   }
 }

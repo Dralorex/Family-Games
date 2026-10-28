@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { UsernameGate } from '../components/UsernameGate'
-import { generateCode, createPlayerId } from '../lib/codes'
+import { generateCode, createPlayerId, createSessionId } from '../lib/codes'
 import { getLastTimerRange, saveTimerRange } from '../lib/storage'
 import { getActiveParty, setActiveParty } from '../lib/party'
 import { createHotPotatoRoom } from '../rooms/factory'
@@ -40,7 +40,12 @@ export function CreateHotPotato() {
     const hi = Math.max(lo, Math.max(minSec, maxSec))
     saveTimerRange(lo, hi)
     const code = generateCode()
-    const host = { id: createPlayerId(), name, joinedAt: Date.now() }
+    const host = {
+      id: createPlayerId(),
+      name,
+      joinedAt: Date.now(),
+      sessionId: createSessionId(code),
+    }
     const party = getActiveParty()
     const room = createHotPotatoRoom({
       code,
