@@ -27,9 +27,9 @@ export interface RoomSync {
 
 /**
  * Local-first room sync.
- * - Host applies actions immediately (works even if MQTT is blocked).
- * - BroadcastChannel keeps same-browser tabs in sync.
- * - MQTT relays across devices when the broker is reachable.
+ * - Host applies actions immediately.
+ * - BroadcastChannel for same-browser tabs.
+ * - MQTT with retained room state so joiners get the room instantly on subscribe.
  */
 export function connectRoomSync(opts: {
   code: string
@@ -54,6 +54,7 @@ export function connectRoomSync(opts: {
   let mqttConnected = false
   let client: MqttClient | null = null
   let brokerIndex = 0
+  const pendingActions: RoomAction[] = []
 
   const channel =
     typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(`fg-room-${code}`) : null
@@ -70,7 +71,8 @@ export function connectRoomSync(opts: {
       // ignore
     }
     if (client && mqttConnected) {
-      client.publish(stateTopic(code), JSON.stringify(state), { qos: 0, retain: false })
+      // Retained so anyone who joins later gets the room immediately
+      client.publish(stateTopic(code), JSON.stringify(state), { qos: 0, retain: true })
     }
   }
 
@@ -85,13 +87,37 @@ export function connectRoomSync(opts: {
     }
   }
 
+  const flushPending = () => {
+    if (!pendingActions.length) return
+    const queued = pendingActions.splice(0, pendingActions.length)
+    for (const action of queued) {
+      publishActionInner(action)
+    }
+  }
+
+  const publishActionInner = (action: RoomAction) => {
+    if (isAuthority && room) {
+      handleAction(action)
+      return
+    }
+    try {
+      channel?.postMessage({ kind: 'action', action })
+    } catch {
+      // ignore
+    }
+    if (client && mqttConnected) {
+      client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
+      return
+    }
+    // Not connected yet — queue so join isn't dropped
+    pendingActions.push(action)
+  }
+
   if (channel) {
     channel.onmessage = (event: MessageEvent) => {
       if (closed) return
       const data = event.data as { kind: string; state?: RoomState; action?: RoomAction }
       if (data.kind === 'state' && data.state) {
-        // Prefer newer createdAt/version-ish: use JSON inequality only if we're not authority
-        // or incoming looks like same room with updates
         if (!isAuthority || !room) {
           room = data.state
           setCachedRoom(data.state)
@@ -99,8 +125,20 @@ export function connectRoomSync(opts: {
         }
         return
       }
+      if (data.kind === 'hello' && isAuthority && room) {
+        emitState(room)
+        return
+      }
       if (data.kind === 'action' && data.action && isAuthority) {
         handleAction(data.action)
+      }
+    }
+    // Ask any existing host tab for state immediately
+    if (!isAuthority) {
+      try {
+        channel.postMessage({ kind: 'hello' })
+      } catch {
+        // ignore
       }
     }
   }
@@ -110,8 +148,8 @@ export function connectRoomSync(opts: {
     const nextClient: MqttClient = mqtt.connect(url, {
       clientId: `fg_${playerId.replace(/-/g, '').slice(0, 16)}_${Math.random().toString(36).slice(2, 8)}`,
       clean: true,
-      reconnectPeriod: 0,
-      connectTimeout: 8000,
+      reconnectPeriod: 1500,
+      connectTimeout: 6000,
     })
     client = nextClient
 
@@ -126,9 +164,9 @@ export function connectRoomSync(opts: {
       if (brokerIndex < BROKER_URLS.length) {
         connectMqtt(BROKER_URLS[brokerIndex]!)
       } else {
-        // Local / BroadcastChannel still work
         onStatus('local')
         isAuthority = Boolean(isCreator || (room && room.hostId === playerId))
+        flushPending()
       }
     }
 
@@ -144,11 +182,13 @@ export function connectRoomSync(opts: {
         if (isAuthority && room) {
           emitState(room)
         } else {
+          // Retained state arrives via subscribe; also nudge host
           nextClient.publish(
             actionTopic(code),
             JSON.stringify({ type: 'hello', fromId: playerId } satisfies RoomAction),
           )
         }
+        flushPending()
       })
     })
 
@@ -158,9 +198,7 @@ export function connectRoomSync(opts: {
         const data = JSON.parse(payload.toString()) as RoomState | RoomAction
         if (topic === stateTopic(code) && data && typeof data === 'object' && 'kind' in data) {
           const incoming = data as RoomState
-          // Do not let a stale lobby seed overwrite a newer in-progress room
           if (room && incoming.createdAt === room.createdAt) {
-            // Same room instance — accept updates from host
             if (!isAuthority) {
               room = incoming
               setCachedRoom(incoming)
@@ -184,24 +222,26 @@ export function connectRoomSync(opts: {
       }
     })
 
-    nextClient.on('error', failToNext)
+    nextClient.on('error', () => {
+      if (!mqttConnected) failToNext()
+    })
     nextClient.on('close', () => {
       if (!closed && !mqttConnected) failToNext()
     })
 
     window.setTimeout(() => {
       if (!mqttConnected && client === nextClient) failToNext()
-    }, 9000)
+    }, 5000)
   }
 
   connectMqtt(BROKER_URLS[0]!)
 
-  // If still connecting after a moment with local room, show local status early for UX
+  // Surface local quickly so the UI never blocks join on broker latency
   window.setTimeout(() => {
-    if (!closed && !mqttConnected && room) {
-      onStatus('local')
+    if (!closed && !mqttConnected) {
+      onStatus(room ? 'local' : 'connecting')
     }
-  }, 2500)
+  }, 400)
 
   tickTimer = setInterval(() => {
     if (!isAuthority || !room || room.kind !== 'hot-potato') return
@@ -213,18 +253,7 @@ export function connectRoomSync(opts: {
 
   return {
     publishAction: (action: RoomAction) => {
-      if (isAuthority && room) {
-        handleAction(action)
-        return
-      }
-      try {
-        channel?.postMessage({ kind: 'action', action })
-      } catch {
-        // ignore
-      }
-      if (client && mqttConnected) {
-        client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
-      }
+      publishActionInner(action)
     },
     publishState: emitState,
     close: () => {
@@ -236,6 +265,10 @@ export function connectRoomSync(opts: {
         // ignore
       }
       try {
+        // Clear retained state if host closes while finished/closed
+        if (client && mqttConnected && isAuthority && room?.status === 'closed') {
+          client.publish(stateTopic(code), '', { qos: 0, retain: true })
+        }
         client?.end(true)
       } catch {
         // ignore

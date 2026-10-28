@@ -30,20 +30,22 @@ export function RoomPage() {
   const [tab, setTab] = useState<'main' | 'score'>('main')
   const [nameError, setNameError] = useState('')
 
+  // Connect immediately so joiners receive retained room state before/while picking a name
   const { room, status, send } = useRoom({
     code,
     playerId,
     isCreator,
     initialState: seed,
-    enabled: Boolean(name) || isCreator,
+    enabled: true,
   })
 
   // Resume: offer names already in the room for this device
   const rosterNames = room ? Object.values(room.players).map((p) => p.name) : []
 
+  // Join as soon as a name is chosen — do not wait for MQTT "connected"
   useEffect(() => {
     if (!name) return
-    if (status !== 'connected' && status !== 'local') return
+
     if (!room) {
       send({
         type: 'join',
@@ -51,24 +53,27 @@ export function RoomPage() {
       })
       return
     }
+
     const existing = Object.values(room.players).find(
       (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
     )
     if (existing && existing.id !== playerId) {
       send({ type: 'rejoin', name, playerId })
-    } else if (!room.players[playerId]) {
-      if (nameTaken(room.players, name, playerId)) {
-        setNameError('That name is already taken. Pick another or rejoin with the exact same name.')
-        setName(null)
-        return
-      }
-      send({
-        type: 'join',
-        player: { id: playerId, name, joinedAt: Date.now() },
-      })
+      return
     }
+    if (room.players[playerId]) return
+
+    if (nameTaken(room.players, name, playerId)) {
+      setNameError('That name is already taken. Pick another or rejoin with the exact same name.')
+      setName(null)
+      return
+    }
+    send({
+      type: 'join',
+      player: { id: playerId, name, joinedAt: Date.now() },
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, name, playerId, room?.code])
+  }, [name, playerId, room?.code, room?.players, status])
 
   if (!name) {
     return (
@@ -104,7 +109,11 @@ export function RoomPage() {
             <h1>Joining…</h1>
             <CodeDropdown code={code} />
           </div>
-          <p className="muted">Waiting for the host room <strong>{code}</strong>.</p>
+          <p className="muted">
+            Connecting to <strong>{code}</strong>
+            {status === 'connecting' ? '…' : ` (${status})`}. Your join is already sent — hang tight
+            for the host.
+          </p>
           {!isAudioUnlocked() ? (
             <button type="button" className="btn secondary" onClick={() => void unlockAudio()}>
               Enable sound
