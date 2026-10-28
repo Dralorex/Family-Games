@@ -27,6 +27,13 @@ export function Home() {
             Scorecards
           </Link>
         </div>
+        <p className="home-support auth-home-note">
+          New browser?{' '}
+          <Link to="/host" className="text-link">
+            Continue as host
+          </Link>{' '}
+          with the name that owns the lobby — phones still connected will sync again.
+        </p>
       </div>
     </main>
   )

@@ -63,8 +63,10 @@ export type RoomState = HotPotatoRoom | ScorecardRoom
 
 export type RoomAction =
   | { type: 'hello'; fromId: string }
-  | { type: 'join'; player: RoomPlayer }
-  | { type: 'rejoin'; name: string; playerId: string; sessionId: string }
+  /** Any peer with room state may republish so a reclaiming host can catch up */
+  | { type: 'request-state'; fromId: string }
+  | { type: 'join'; player: RoomPlayer; reclaimHost?: boolean }
+  | { type: 'rejoin'; name: string; playerId: string; sessionId: string; reclaimHost?: boolean }
   | { type: 'leave'; playerId: string; newHostId?: string }
   | { type: 'add-player'; fromId: string; player: RoomPlayer }
   | { type: 'set-timer-range'; minMs: number; maxMs: number; fromId: string }

@@ -23,19 +23,23 @@ export function RoomPage() {
   const { code = '' } = useParams()
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const isCreator = params.get('host') === '1'
+  const hostParam = params.get('host') === '1'
   const playerId = useMemo(() => createPlayerId(), [])
   const sessionId = useMemo(() => createSessionId(code), [code])
-  const seed = useMemo(() => (isCreator ? loadSeed(code) : undefined), [code, isCreator])
   const [name, setName] = useState<string | null>(() => sessionStorage.getItem(`fg_name_${code}`))
   const [tab, setTab] = useState<'main' | 'score'>('main')
   const [nameError, setNameError] = useState('')
   const [kicked, setKicked] = useState(false)
 
+  // Host create flow, Continue-as-host, or same creator name reclaiming a live lobby
+  const isCreator = hostParam
+  const seed = useMemo(() => (isCreator ? loadSeed(code) : undefined), [code, isCreator])
+
   const { room, status, send } = useRoom({
     code,
     playerId,
     isCreator,
+    claimName: name,
     initialState: seed,
     enabled: true,
   })
@@ -46,10 +50,17 @@ export function RoomPage() {
   useEffect(() => {
     if (!name || kicked) return
 
+    const reclaimHost =
+      hostParam ||
+      (room
+        ? room.creatorName.trim().toLowerCase() === name.trim().toLowerCase()
+        : false)
+
     if (!room) {
       send({
         type: 'join',
         player: { id: playerId, name, joinedAt: Date.now(), sessionId },
+        reclaimHost: hostParam,
       })
       return
     }
@@ -57,7 +68,7 @@ export function RoomPage() {
     const self = room.players[playerId]
     if (self) {
       // Same device — refresh session / clear left
-      if (self.left || self.sessionId !== sessionId) {
+      if (self.left || self.sessionId !== sessionId || (reclaimHost && room.hostId !== playerId)) {
         send({
           type: 'join',
           player: {
@@ -66,6 +77,7 @@ export function RoomPage() {
             joinedAt: self.joinedAt,
             sessionId,
           },
+          reclaimHost,
         })
       }
       return
@@ -76,16 +88,17 @@ export function RoomPage() {
     )
     if (existing) {
       // Same name from this browser → take over (kicks the other browser)
-      send({ type: 'rejoin', name, playerId, sessionId })
+      send({ type: 'rejoin', name, playerId, sessionId, reclaimHost })
       return
     }
 
     send({
       type: 'join',
       player: { id: playerId, name, joinedAt: Date.now(), sessionId },
+      reclaimHost,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, playerId, sessionId, room?.code, room?.players, status, kicked])
+  }, [name, playerId, sessionId, room?.code, room?.players, status, kicked, hostParam])
 
   // Detect kicked by another browser using the same name
   useEffect(() => {

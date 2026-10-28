@@ -898,3 +898,16 @@ button {
   margin: 0;
   color: var(--danger);
 }
+
+.auth-home-note {
+  margin-top: 0.85rem !important;
+  font-size: 0.9rem !important;
+  opacity: 0.9;
+}
+
+.text-link {
+  color: var(--teal, #0f6e56);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}

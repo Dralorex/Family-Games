@@ -86,17 +86,19 @@ function nextHostCandidate(room: RoomState, excludingId: string): string | undef
 
 /**
  * Move a roster seat onto a new browser/playerId + session.
- * Active host swapping browsers keeps ownership; left creator asks to get it back.
+ * Active host swapping browsers keeps ownership; left creator asks to get it back
+ * unless reclaimHost (Continue-as-host / new browser with ?host=1).
  */
 function takeOverSeat(
   room: RoomState,
   match: RoomPlayer,
   playerId: string,
   sessionId: string,
-  opts?: { wasLeft?: boolean },
+  opts?: { wasLeft?: boolean; reclaimHost?: boolean },
 ): RoomState {
   const wasLeft = Boolean(opts?.wasLeft ?? match.left)
   const wasHostSeat = room.hostId === match.id
+  const reclaimHost = Boolean(opts?.reclaimHost)
   const revived: RoomPlayer = {
     ...match,
     id: playerId,
@@ -106,12 +108,17 @@ function takeOverSeat(
   }
   const { [match.id]: _old, ...rest } = room.players
 
+  const isCreator =
+    room.creatorName.trim().toLowerCase() === revived.name.trim().toLowerCase()
+
   let hostId = room.hostId
-  if (wasHostSeat && !wasLeft) {
+  if (reclaimHost && isCreator) {
+    // Explicit new-browser / Continue-as-host reclaim
+    hostId = playerId
+  } else if (wasHostSeat && !wasLeft) {
     // Owner swapped browsers without leaving — stay owner on the new browser
     hostId = playerId
   } else if (wasHostSeat && wasLeft) {
-    // Leave should already have moved host; if not, fall back to next active seat
     hostId =
       nextHostCandidate({ ...room, players: { ...rest, [playerId]: revived } }, playerId) ??
       playerId
@@ -121,10 +128,13 @@ function takeOverSeat(
     ...room,
     hostId,
     players: { ...rest, [playerId]: revived },
+    pendingHostReturn:
+      reclaimHost && isCreator
+        ? null
+        : room.pendingHostReturn?.playerId === match.id
+          ? null
+          : room.pendingHostReturn,
   }
-
-  const isCreator =
-    room.creatorName.trim().toLowerCase() === revived.name.trim().toLowerCase()
 
   if (room.kind === 'scorecard') {
     let sc = next as ScorecardRoom
@@ -135,7 +145,7 @@ function takeOverSeat(
     if (wasLeft) {
       sc = continueFromCurrentRound(sc, playerId)
     }
-    if (wasLeft && isCreator && sc.hostId !== playerId) {
+    if (wasLeft && isCreator && sc.hostId !== playerId && !reclaimHost) {
       sc = { ...sc, pendingHostReturn: { playerId, name: revived.name } }
     }
     next = sc
@@ -147,7 +157,7 @@ function takeOverSeat(
         aliveIds: hp.aliveIds.map((id) => (id === match.id ? playerId : id)),
       }
     }
-    if (wasLeft && isCreator && hp.hostId !== playerId) {
+    if (wasLeft && isCreator && hp.hostId !== playerId && !reclaimHost) {
       hp = { ...hp, pendingHostReturn: { playerId, name: revived.name } }
     }
     next = hp
@@ -159,6 +169,7 @@ function takeOverSeat(
 export function applyAction(room: RoomState, action: RoomAction, now = Date.now()): RoomState {
   switch (action.type) {
     case 'hello':
+    case 'request-state':
       return room
 
     case 'join': {
@@ -179,10 +190,12 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
             },
           },
         }
-        if (next.kind === 'scorecard' && existingById.left) {
+        const isCreator =
+          next.creatorName.trim().toLowerCase() === action.player.name.trim().toLowerCase()
+        if (action.reclaimHost && isCreator) {
+          next = { ...next, hostId: action.player.id, pendingHostReturn: null }
+        } else if (next.kind === 'scorecard' && existingById.left) {
           next = continueFromCurrentRound(next, action.player.id)
-          const isCreator =
-            next.creatorName.trim().toLowerCase() === action.player.name.trim().toLowerCase()
           if (isCreator && next.hostId !== action.player.id) {
             next = {
               ...next,
@@ -198,6 +211,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
         // Same name from a new browser → kick old session / take over seat
         return takeOverSeat(room, byName, action.player.id, sessionId, {
           wasLeft: Boolean(byName.left),
+          reclaimHost: action.reclaimHost,
         })
       }
 
@@ -232,6 +246,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
       if (!match) return room
       return takeOverSeat(room, match, action.playerId, action.sessionId, {
         wasLeft: Boolean(match.left),
+        reclaimHost: action.reclaimHost,
       })
     }
 
