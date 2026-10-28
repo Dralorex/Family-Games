@@ -7,10 +7,12 @@ export function useRoom(opts: {
   code: string
   playerId: string
   isCreator: boolean
+  /** Creator display name — used to reclaim host authority from a new browser */
+  claimName?: string | null
   initialState?: RoomState
   enabled?: boolean
 }) {
-  const { code, playerId, isCreator, initialState, enabled = true } = opts
+  const { code, playerId, isCreator, claimName = null, initialState, enabled = true } = opts
   const seeded = initialState ? normalizeRoom(initialState) : null
   const [room, setRoom] = useState<RoomState | null>(seeded)
   const [status, setStatus] = useState<SyncStatus>('connecting')
@@ -23,6 +25,7 @@ export function useRoom(opts: {
       code,
       playerId,
       isCreator,
+      claimName,
       initialState: seeded ?? undefined,
       onState: (state) => {
         const normalized = normalizeRoom(state)
@@ -41,8 +44,8 @@ export function useRoom(opts: {
       sync.close()
       syncRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- connect once per code/player
-  }, [code, playerId, isCreator, enabled])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- connect once per code/player/claim
+  }, [code, playerId, isCreator, claimName, enabled])
 
   const send = (action: RoomAction) => {
     syncRef.current?.publishAction(action)

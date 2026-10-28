@@ -6,6 +6,7 @@ import type { ScorecardTemplateId } from '../core/score/types'
 import { createPlayerId, createSessionId, generateCode } from '../lib/codes'
 import { getActiveParty, setActiveParty } from '../lib/party'
 import { createScorecardRoom } from '../rooms/factory'
+import { claimFromRoom, publishOwnerClaim } from '../rooms/ownerIndex'
 
 export function CreateScorecard() {
   const { templateId = '' } = useParams()
@@ -54,6 +55,7 @@ export function CreateScorecard() {
     })
     sessionStorage.setItem(`fg_seed_${code}`, JSON.stringify(room))
     sessionStorage.setItem(`fg_name_${code}`, name)
+    void publishOwnerClaim(name, claimFromRoom(room)).catch(() => {})
 
     if (party) {
       setActiveParty({ partyId: party.partyId, hostId: host.id, code })

@@ -39,3 +39,5 @@ GitHub Actions deploys `main` to GitHub Pages. Enable **Settings → Pages → S
 ## Sync note
 
 Rooms sync live over MQTT (public HiveMQ broker) so the static Pages site can still do multiplayer without a custom backend. Fine for family use; don’t put secrets in room state.
+
+**Host on a new browser:** use Home → Continue as host (or join with the same creator name + code). The lobby for that name opens on this browser, host authority moves over, and phones still connected re-sync from the retained room state.

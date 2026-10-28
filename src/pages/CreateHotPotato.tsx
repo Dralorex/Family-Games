@@ -5,6 +5,7 @@ import { generateCode, createPlayerId, createSessionId } from '../lib/codes'
 import { getLastTimerRange, saveTimerRange } from '../lib/storage'
 import { getActiveParty, setActiveParty } from '../lib/party'
 import { createHotPotatoRoom } from '../rooms/factory'
+import { claimFromRoom, publishOwnerClaim } from '../rooms/ownerIndex'
 
 const PRESETS = [
   { label: '15–45s', min: 15, max: 45 },
@@ -57,6 +58,7 @@ export function CreateHotPotato() {
     })
     sessionStorage.setItem(`fg_seed_${code}`, JSON.stringify(room))
     sessionStorage.setItem(`fg_name_${code}`, name)
+    void publishOwnerClaim(name, claimFromRoom(room)).catch(() => {})
     if (party) {
       setActiveParty({ partyId: party.partyId, hostId: host.id, code })
       // BroadcastChannel pull for same-browser party members
