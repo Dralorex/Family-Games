@@ -1,8 +1,12 @@
 import mqtt, { type MqttClient } from 'mqtt'
+import { getCachedRoom, setCachedRoom } from './roomCache'
 import { applyAction, tickHotPotato } from './reducer'
 import type { RoomAction, RoomState } from './types'
 
-const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt'
+const BROKER_URLS = [
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://test.mosquitto.org:8081',
+]
 const PREFIX = 'familygames/v1'
 
 function stateTopic(code: string) {
@@ -13,15 +17,20 @@ function actionTopic(code: string) {
   return `${PREFIX}/room/${code}/action`
 }
 
-export type SyncStatus = 'connecting' | 'connected' | 'error' | 'closed'
+export type SyncStatus = 'connecting' | 'connected' | 'local' | 'error' | 'closed'
 
 export interface RoomSync {
   publishAction: (action: RoomAction) => void
-  /** Host (or creator seeding) publishes authoritative state */
   publishState: (state: RoomState) => void
   close: () => void
 }
 
+/**
+ * Local-first room sync.
+ * - Host applies actions immediately (works even if MQTT is blocked).
+ * - BroadcastChannel keeps same-browser tabs in sync.
+ * - MQTT relays across devices when the broker is reachable.
+ */
 export function connectRoomSync(opts: {
   code: string
   playerId: string
@@ -32,31 +41,37 @@ export function connectRoomSync(opts: {
 }): RoomSync {
   const { code, playerId, isCreator, initialState, onState, onStatus } = opts
 
-  let room: RoomState | null = initialState ?? null
-  let isAuthority = isCreator
+  const cached = getCachedRoom(code)
+  let room: RoomState | null = cached ?? initialState ?? null
+  if (room) {
+    setCachedRoom(room)
+    onState(room)
+  }
+
+  let isAuthority = Boolean(isCreator || (room && room.hostId === playerId))
   let tickTimer: ReturnType<typeof setInterval> | null = null
   let closed = false
+  let mqttConnected = false
+  let client: MqttClient | null = null
+  let brokerIndex = 0
+
+  const channel =
+    typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(`fg-room-${code}`) : null
 
   onStatus('connecting')
 
-  const client: MqttClient = mqtt.connect(BROKER_URL, {
-    clientId: `fg_${playerId.replace(/-/g, '').slice(0, 16)}_${Math.random().toString(36).slice(2, 8)}`,
-    clean: true,
-    reconnectPeriod: 2000,
-    connectTimeout: 10000,
-  })
-
-  const becomeAuthorityIfNeeded = (state: RoomState) => {
-    // Creator stays authority; if creator gone, earliest joiner takes over
-    if (state.hostId === playerId) {
-      isAuthority = true
-    }
-  }
-
-  const publishState = (state: RoomState) => {
+  const emitState = (state: RoomState) => {
     room = state
-    client.publish(stateTopic(code), JSON.stringify(state), { qos: 0, retain: false })
+    setCachedRoom(state)
     onState(state)
+    try {
+      channel?.postMessage({ kind: 'state', state })
+    } catch {
+      // ignore
+    }
+    if (client && mqttConnected) {
+      client.publish(stateTopic(code), JSON.stringify(state), { qos: 0, retain: false })
+    }
   }
 
   const handleAction = (action: RoomAction) => {
@@ -65,80 +80,166 @@ export function connectRoomSync(opts: {
     if (next.kind === 'hot-potato') {
       next = tickHotPotato(next)
     }
-    // hello / join should always rebroadcast so late joiners get state
     if (action.type === 'hello' || next !== room) {
-      publishState(next)
+      emitState(next)
     }
   }
 
-  client.on('connect', () => {
-    if (closed) return
-    onStatus('connected')
-    client.subscribe([stateTopic(code), actionTopic(code)], (err) => {
-      if (err) {
-        onStatus('error')
+  if (channel) {
+    channel.onmessage = (event: MessageEvent) => {
+      if (closed) return
+      const data = event.data as { kind: string; state?: RoomState; action?: RoomAction }
+      if (data.kind === 'state' && data.state) {
+        // Prefer newer createdAt/version-ish: use JSON inequality only if we're not authority
+        // or incoming looks like same room with updates
+        if (!isAuthority || !room) {
+          room = data.state
+          setCachedRoom(data.state)
+          onState(data.state)
+        }
         return
       }
-      if (isCreator && initialState) {
-        publishState(initialState)
+      if (data.kind === 'action' && data.action && isAuthority) {
+        handleAction(data.action)
+      }
+    }
+  }
+
+  const connectMqtt = (url: string) => {
+    if (closed) return
+    const nextClient: MqttClient = mqtt.connect(url, {
+      clientId: `fg_${playerId.replace(/-/g, '').slice(0, 16)}_${Math.random().toString(36).slice(2, 8)}`,
+      clean: true,
+      reconnectPeriod: 0,
+      connectTimeout: 8000,
+    })
+    client = nextClient
+
+    const failToNext = () => {
+      if (closed || mqttConnected) return
+      try {
+        nextClient.end(true)
+      } catch {
+        // ignore
+      }
+      brokerIndex += 1
+      if (brokerIndex < BROKER_URLS.length) {
+        connectMqtt(BROKER_URLS[brokerIndex]!)
       } else {
-        // Ask host to rebroadcast
-        client.publish(actionTopic(code), JSON.stringify({ type: 'hello', fromId: playerId } satisfies RoomAction))
+        // Local / BroadcastChannel still work
+        onStatus('local')
+        isAuthority = Boolean(isCreator || (room && room.hostId === playerId))
+      }
+    }
+
+    nextClient.on('connect', () => {
+      if (closed) return
+      mqttConnected = true
+      onStatus('connected')
+      nextClient.subscribe([stateTopic(code), actionTopic(code)], (err) => {
+        if (err) {
+          failToNext()
+          return
+        }
+        if (isAuthority && room) {
+          emitState(room)
+        } else {
+          nextClient.publish(
+            actionTopic(code),
+            JSON.stringify({ type: 'hello', fromId: playerId } satisfies RoomAction),
+          )
+        }
+      })
+    })
+
+    nextClient.on('message', (topic, payload) => {
+      if (closed) return
+      try {
+        const data = JSON.parse(payload.toString()) as RoomState | RoomAction
+        if (topic === stateTopic(code) && data && typeof data === 'object' && 'kind' in data) {
+          const incoming = data as RoomState
+          // Do not let a stale lobby seed overwrite a newer in-progress room
+          if (room && incoming.createdAt === room.createdAt) {
+            // Same room instance — accept updates from host
+            if (!isAuthority) {
+              room = incoming
+              setCachedRoom(incoming)
+              onState(incoming)
+            }
+          } else if (!room || incoming.createdAt >= room.createdAt) {
+            if (!isAuthority || !room) {
+              room = incoming
+              setCachedRoom(incoming)
+              onState(incoming)
+              if (incoming.hostId === playerId) isAuthority = true
+            }
+          }
+          return
+        }
+        if (topic === actionTopic(code) && data && typeof data === 'object' && 'type' in data) {
+          handleAction(data as RoomAction)
+        }
+      } catch {
+        // ignore malformed
       }
     })
 
-    tickTimer = setInterval(() => {
-      if (!isAuthority || !room || room.kind !== 'hot-potato') return
-      const next = tickHotPotato(room)
-      if (next.timer.status !== room.timer.status) {
-        publishState(next)
-      }
-    }, 250)
-  })
+    nextClient.on('error', failToNext)
+    nextClient.on('close', () => {
+      if (!closed && !mqttConnected) failToNext()
+    })
 
-  client.on('message', (topic, payload) => {
-    if (closed) return
-    try {
-      const data = JSON.parse(payload.toString()) as RoomState | RoomAction
-      if (topic === stateTopic(code) && data && typeof data === 'object' && 'kind' in data) {
-        room = data as RoomState
-        becomeAuthorityIfNeeded(room)
-        onState(room)
-        return
-      }
-      if (topic === actionTopic(code) && data && typeof data === 'object' && 'type' in data) {
-        const action = data as RoomAction
-        // Apply locally if we are authority
-        handleAction(action)
-      }
-    } catch {
-      // ignore malformed
+    window.setTimeout(() => {
+      if (!mqttConnected && client === nextClient) failToNext()
+    }, 9000)
+  }
+
+  connectMqtt(BROKER_URLS[0]!)
+
+  // If still connecting after a moment with local room, show local status early for UX
+  window.setTimeout(() => {
+    if (!closed && !mqttConnected && room) {
+      onStatus('local')
     }
-  })
+  }, 2500)
 
-  client.on('error', () => {
-    if (!closed) onStatus('error')
-  })
-
-  client.on('close', () => {
-    if (!closed) onStatus('closed')
-  })
+  tickTimer = setInterval(() => {
+    if (!isAuthority || !room || room.kind !== 'hot-potato') return
+    const next = tickHotPotato(room)
+    if (next.timer.status !== room.timer.status) {
+      emitState(next)
+    }
+  }, 250)
 
   return {
     publishAction: (action: RoomAction) => {
-      // Host applies locally and broadcasts state (skip action echo to avoid double-apply).
-      // Guests publish actions for the host to process.
       if (isAuthority && room) {
         handleAction(action)
         return
       }
-      client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
+      try {
+        channel?.postMessage({ kind: 'action', action })
+      } catch {
+        // ignore
+      }
+      if (client && mqttConnected) {
+        client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
+      }
     },
-    publishState,
+    publishState: emitState,
     close: () => {
       closed = true
       if (tickTimer) clearInterval(tickTimer)
-      client.end(true)
+      try {
+        channel?.close()
+      } catch {
+        // ignore
+      }
+      try {
+        client?.end(true)
+      } catch {
+        // ignore
+      }
     },
   }
 }

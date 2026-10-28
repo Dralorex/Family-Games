@@ -22,7 +22,15 @@ export function useRoom(opts: {
       playerId,
       isCreator,
       initialState,
-      onState: setRoom,
+      onState: (state) => {
+        setRoom(state)
+        // Keep seed fresh so StrictMode remounts don't wipe an in-progress game
+        try {
+          sessionStorage.setItem(`fg_seed_${code}`, JSON.stringify(state))
+        } catch {
+          // ignore quota
+        }
+      },
       onStatus: setStatus,
     })
     syncRef.current = sync

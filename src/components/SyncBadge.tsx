@@ -4,11 +4,13 @@ export function SyncBadge({ status }: { status: SyncStatus }) {
   const label =
     status === 'connected'
       ? 'Live'
-      : status === 'connecting'
-        ? 'Connecting…'
-        : status === 'error'
-          ? 'Connection issue'
-          : 'Reconnecting…'
+      : status === 'local'
+        ? 'This device'
+        : status === 'connecting'
+          ? 'Connecting…'
+          : status === 'error'
+            ? 'Connection issue'
+            : 'Reconnecting…'
   return (
     <span className={`sync-badge ${status}`} title={label}>
       {label}

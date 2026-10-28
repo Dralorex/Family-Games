@@ -418,6 +418,11 @@ button {
   color: var(--ok);
 }
 
+.sync-badge.local {
+  background: rgba(154, 103, 0, 0.14);
+  color: var(--warn);
+}
+
 .sync-badge.connecting,
 .sync-badge.closed {
   color: var(--warn);
