@@ -865,3 +865,36 @@ button {
   display: grid;
   gap: 0.55rem;
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(4, 20, 15, 0.62);
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.modal-card {
+  width: min(100%, 22rem);
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.modal-actions .btn {
+  flex: 1;
+}
+
+.host-return-prompt {
+  border: 1.5px solid rgba(232, 93, 4, 0.45);
+}
+
+.kick-banner {
+  margin: 0;
+  color: var(--danger);
+}

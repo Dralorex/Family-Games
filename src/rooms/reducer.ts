@@ -60,15 +60,114 @@ function copyLastPlaceScores(
   return { ...room, scores: { ...room.scores, [newPlayerId]: copied } }
 }
 
+/** Keep past rounds; clear the open round so a returning player enters their own score. */
+function continueFromCurrentRound(room: ScorecardRoom, playerId: string): ScorecardRoom {
+  if (room.status !== 'playing') return room
+  const existing = room.scores[playerId]
+  if (!existing || existing[room.currentRound] === undefined) return room
+  const { [room.currentRound]: _dropped, ...kept } = existing
+  return {
+    ...room,
+    scores: {
+      ...room.scores,
+      [playerId]: kept,
+    },
+  }
+}
+
+function findPlayerByName(room: RoomState, name: string): RoomPlayer | undefined {
+  const needle = name.trim().toLowerCase()
+  return playersList(room).find((p) => p.name.trim().toLowerCase() === needle)
+}
+
+function nextHostCandidate(room: RoomState, excludingId: string): string | undefined {
+  return activeList(room).find((p) => p.id !== excludingId)?.id
+}
+
+/**
+ * Move a roster seat onto a new browser/playerId + session.
+ * Active host swapping browsers keeps ownership; left creator asks to get it back.
+ */
+function takeOverSeat(
+  room: RoomState,
+  match: RoomPlayer,
+  playerId: string,
+  sessionId: string,
+  opts?: { wasLeft?: boolean },
+): RoomState {
+  const wasLeft = Boolean(opts?.wasLeft ?? match.left)
+  const wasHostSeat = room.hostId === match.id
+  const revived: RoomPlayer = {
+    ...match,
+    id: playerId,
+    left: false,
+    sessionId,
+    joinedAt: match.joinedAt,
+  }
+  const { [match.id]: _old, ...rest } = room.players
+
+  let hostId = room.hostId
+  if (wasHostSeat && !wasLeft) {
+    // Owner swapped browsers without leaving — stay owner on the new browser
+    hostId = playerId
+  } else if (wasHostSeat && wasLeft) {
+    // Leave should already have moved host; if not, fall back to next active seat
+    hostId =
+      nextHostCandidate({ ...room, players: { ...rest, [playerId]: revived } }, playerId) ??
+      playerId
+  }
+
+  let next: RoomState = {
+    ...room,
+    hostId,
+    players: { ...rest, [playerId]: revived },
+  }
+
+  const isCreator =
+    room.creatorName.trim().toLowerCase() === revived.name.trim().toLowerCase()
+
+  if (room.kind === 'scorecard') {
+    let sc = next as ScorecardRoom
+    if (room.scores[match.id] && match.id !== playerId) {
+      const { [match.id]: oldScores, ...scoreRest } = sc.scores
+      sc = { ...sc, scores: { ...scoreRest, [playerId]: oldScores ?? {} } }
+    }
+    if (wasLeft) {
+      sc = continueFromCurrentRound(sc, playerId)
+    }
+    if (wasLeft && isCreator && sc.hostId !== playerId) {
+      sc = { ...sc, pendingHostReturn: { playerId, name: revived.name } }
+    }
+    next = sc
+  } else {
+    let hp = next as HotPotatoRoom
+    if (hp.aliveIds.includes(match.id)) {
+      hp = {
+        ...hp,
+        aliveIds: hp.aliveIds.map((id) => (id === match.id ? playerId : id)),
+      }
+    }
+    if (wasLeft && isCreator && hp.hostId !== playerId) {
+      hp = { ...hp, pendingHostReturn: { playerId, name: revived.name } }
+    }
+    next = hp
+  }
+
+  return next
+}
+
 export function applyAction(room: RoomState, action: RoomAction, now = Date.now()): RoomState {
   switch (action.type) {
     case 'hello':
       return room
 
     case 'join': {
+      const sessionId = action.player.sessionId ?? action.player.id
       const existingById = room.players[action.player.id]
+
+      // Same browser/player id reconnect
       if (existingById) {
-        return {
+        let next: RoomState = {
           ...room,
           players: {
             ...room.players,
@@ -76,20 +175,41 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
               ...existingById,
               name: action.player.name,
               left: false,
+              sessionId,
             },
           },
         }
+        if (next.kind === 'scorecard' && existingById.left) {
+          next = continueFromCurrentRound(next, action.player.id)
+          const isCreator =
+            next.creatorName.trim().toLowerCase() === action.player.name.trim().toLowerCase()
+          if (isCreator && next.hostId !== action.player.id) {
+            next = {
+              ...next,
+              pendingHostReturn: { playerId: action.player.id, name: action.player.name },
+            }
+          }
+        }
+        return next
       }
-      // Unique names — block if taken by anyone still on the roster (including left)
-      if (nameTaken(room.players, action.player.name)) {
-        return room
+
+      const byName = findPlayerByName(room, action.player.name)
+      if (byName) {
+        // Same name from a new browser → kick old session / take over seat
+        return takeOverSeat(room, byName, action.player.id, sessionId, {
+          wasLeft: Boolean(byName.left),
+        })
       }
+
       if (room.kind === 'hot-potato' && Object.keys(room.players).length >= 50) {
         return room
       }
       let next: RoomState = {
         ...room,
-        players: { ...room.players, [action.player.id]: { ...action.player, left: false } },
+        players: {
+          ...room.players,
+          [action.player.id]: { ...action.player, left: false, sessionId },
+        },
       }
       if (room.kind === 'hot-potato') {
         const hp = next as HotPotatoRoom
@@ -101,7 +221,6 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
               : [...hp.aliveIds, action.player.id]
         return { ...hp, aliveIds }
       }
-      // Mid-game join: match last place scores for completed rounds
       if (room.kind === 'scorecard' && room.status === 'playing' && room.completedRounds >= 1) {
         next = copyLastPlaceScores(next as ScorecardRoom, action.player.id, room.completedRounds)
       }
@@ -109,51 +228,47 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
     }
 
     case 'rejoin': {
-      const match = playersList(room).find(
-        (p) => p.name.trim().toLowerCase() === action.name.trim().toLowerCase(),
-      )
+      const match = findPlayerByName(room, action.name)
       if (!match) return room
-      const revived: RoomPlayer = {
-        ...match,
-        id: action.playerId,
-        left: false,
-        joinedAt: match.joinedAt,
-      }
-      const { [match.id]: _old, ...rest } = room.players
-      // Move scores if id changed
-      let nextRoom: RoomState = {
-        ...room,
-        players: { ...rest, [action.playerId]: revived },
-      }
-      if (room.kind === 'scorecard' && room.scores[match.id] && match.id !== action.playerId) {
-        const sc = nextRoom as ScorecardRoom
-        const { [match.id]: oldScores, ...scoreRest } = sc.scores
-        nextRoom = {
-          ...sc,
-          scores: { ...scoreRest, [action.playerId]: oldScores ?? {} },
-        }
-      }
-      return nextRoom
+      return takeOverSeat(room, match, action.playerId, action.sessionId, {
+        wasLeft: Boolean(match.left),
+      })
     }
 
     case 'leave': {
       const player = room.players[action.playerId]
       if (!player) return room
-      // Soft leave for scorecards (keep on card); hard remove for hot potato lobby only
+
+      const isLeavingHost = room.hostId === action.playerId
+      let hostId = room.hostId
+      if (isLeavingHost) {
+        const preferred = action.newHostId
+        const okPreferred =
+          preferred &&
+          preferred !== action.playerId &&
+          room.players[preferred] &&
+          !room.players[preferred]!.left
+        hostId = okPreferred
+          ? preferred
+          : nextHostCandidate(room, action.playerId) ?? action.playerId
+      }
+
       if (room.kind === 'scorecard') {
         let next: ScorecardRoom = {
           ...room,
+          hostId,
           players: {
             ...room.players,
             [action.playerId]: { ...player, left: true },
           },
           endVotes: { ...(room.endVotes ?? {}) },
+          pendingHostReturn:
+            room.pendingHostReturn?.playerId === action.playerId ? null : room.pendingHostReturn,
         }
         if (next.endVotes) {
           const { [action.playerId]: _, ...votes } = next.endVotes
           next = { ...next, endVotes: votes }
         }
-        // If currently playing and no score this round, fill worst now among those who scored
         if (next.status === 'playing') {
           const active = activeList(next).filter((p) => p.id !== action.playerId)
           if (active.some((p) => next.scores[p.id]?.[next.currentRound] !== undefined)) {
@@ -179,11 +294,33 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
         }
         return next
       }
+
       const { [action.playerId]: _, ...rest } = room.players
       return {
         ...room,
+        hostId: hostId === action.playerId ? (Object.keys(rest)[0] ?? hostId) : hostId,
         players: rest,
         aliveIds: room.aliveIds.filter((id) => id !== action.playerId),
+        pendingHostReturn:
+          room.pendingHostReturn?.playerId === action.playerId ? null : room.pendingHostReturn,
+      }
+    }
+
+    case 'respond-host-return': {
+      if (action.fromId !== room.hostId) return room
+      const pending = room.pendingHostReturn
+      if (!pending) return room
+      if (!action.accept) {
+        return { ...room, pendingHostReturn: null }
+      }
+      const target = room.players[pending.playerId]
+      if (!target || target.left) {
+        return { ...room, pendingHostReturn: null }
+      }
+      return {
+        ...room,
+        hostId: pending.playerId,
+        pendingHostReturn: null,
       }
     }
 
@@ -306,7 +443,6 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
     case 'next-round': {
       if (room.kind !== 'scorecard' || action.fromId !== room.hostId) return room
       if (room.status !== 'playing') return room
-      // Fill left players first, then require all active scores
       let next = fillLeftPlayersForRound(room, room.currentRound)
       const active = activeList(next)
       if (!allScoresEntered(active, next.scores, next.currentRound)) return room
@@ -376,4 +512,8 @@ export function tickHotPotato(room: HotPotatoRoom, now = Date.now()): HotPotatoR
 
 export function isHost(room: RoomState, playerId: string): boolean {
   return room.hostId === playerId
+}
+
+export function defaultNextHostId(room: RoomState, leavingHostId: string): string | undefined {
+  return nextHostCandidate(room, leavingHostId)
 }

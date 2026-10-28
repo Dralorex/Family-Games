@@ -3,9 +3,12 @@ import { createRoot } from 'react-dom/client'
 import { useNavigate } from 'react-router-dom'
 import { CodeDropdown } from '../components/CodeDropdown'
 import { EndGameMenu } from '../components/EndGameMenu'
+import { HostLeaveModal } from '../components/HostLeaveModal'
+import { HostReturnPrompt } from '../components/HostReturnPrompt'
 import { Podium } from '../components/Podium'
 import { ScorecardTable, exportScorecardPng } from '../components/ScorecardTable'
 import { TabShell } from '../components/TabShell'
+import { defaultNextHostId } from '../rooms/reducer'
 import {
   allScoresEntered,
   computeStandings,
@@ -25,6 +28,7 @@ const FINISHED_TTL_MS = 10 * 60 * 1000
 export function ScorecardRoomView(props: {
   room: ScorecardRoom
   playerId: string
+  sessionId: string
   tab: 'main' | 'score'
   onTab: (t: 'main' | 'score') => void
   send: ReturnType<typeof useRoom>['send']
@@ -35,6 +39,7 @@ export function ScorecardRoomView(props: {
   const me = room.players[playerId]
   const players = Object.values(room.players).sort((a, b) => a.joinedAt - b.joinedAt)
   const active = players.filter((p) => !p.left)
+  const [showHostLeave, setShowHostLeave] = useState(false)
   const standings = computeStandings(players, room.scores, room.winDirection)
   const myStanding = standings.find((s) => s.playerId === playerId)
   const first = standings[0]
@@ -135,10 +140,22 @@ export function ScorecardRoomView(props: {
     setAddError('')
   }
 
-  const leave = () => {
+  const leave = (newHostId?: string) => {
     void saveGame(room)
-    send({ type: 'leave', playerId })
+    send({
+      type: 'leave',
+      playerId,
+      ...(newHostId ? { newHostId } : {}),
+    })
     navigate('/')
+  }
+
+  const requestLeave = () => {
+    if (isHost && active.some((p) => p.id !== playerId)) {
+      setShowHostLeave(true)
+      return
+    }
+    leave()
   }
 
   const savePhoto = async () => {
@@ -198,6 +215,31 @@ export function ScorecardRoomView(props: {
   const main = (
     <div className="scorecard-main-stack">
       {header}
+
+      {showHostLeave ? (
+        <HostLeaveModal
+          players={players}
+          hostId={playerId}
+          defaultNextId={defaultNextHostId(room, playerId)}
+          onCancel={() => setShowHostLeave(false)}
+          onConfirm={(newHostId) => {
+            setShowHostLeave(false)
+            leave(newHostId || undefined)
+          }}
+        />
+      ) : null}
+
+      {isHost && room.pendingHostReturn ? (
+        <HostReturnPrompt
+          request={room.pendingHostReturn}
+          onAccept={() =>
+            send({ type: 'respond-host-return', fromId: playerId, accept: true })
+          }
+          onDecline={() =>
+            send({ type: 'respond-host-return', fromId: playerId, accept: false })
+          }
+        />
+      ) : null}
 
       {room.status === 'lobby' ? (
         <div className="bubble">
@@ -260,7 +302,7 @@ export function ScorecardRoomView(props: {
           ) : (
             <p className="muted">Waiting for game master…</p>
           )}
-          <button type="button" className="btn secondary" onClick={leave}>
+          <button type="button" className="btn secondary" onClick={requestLeave}>
             Leave game
           </button>
         </div>
@@ -378,7 +420,7 @@ export function ScorecardRoomView(props: {
               {ready ? 'Waiting for game master to advance…' : 'Enter scores when ready.'}
             </p>
           )}
-          <button type="button" className="btn secondary" onClick={leave}>
+          <button type="button" className="btn secondary" onClick={requestLeave}>
             Leave game
           </button>
           <button
@@ -413,7 +455,7 @@ export function ScorecardRoomView(props: {
             votes={room.endVotes ?? {}}
             onVote={(vote: EndVote) => {
               send({ type: 'cast-end-vote', fromId: playerId, vote })
-              if (vote === 'leave') leave()
+              if (vote === 'leave') requestLeave()
             }}
             onHostNewGame={() => {
               setActiveParty({ partyId: room.partyId, hostId: room.hostId, code: room.code })

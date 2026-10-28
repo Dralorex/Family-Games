@@ -1,12 +1,11 @@
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import { playAlarm, unlockAudio, isAudioUnlocked } from '../audio/alarm'
 import { CodeDropdown } from '../components/CodeDropdown'
 import { TabShell } from '../components/TabShell'
 import { UsernameGate } from '../components/UsernameGate'
 import { useRoom } from '../hooks/useRoom'
-import { createPlayerId } from '../lib/codes'
-import { nameTaken } from '../core/score/engine'
+import { createPlayerId, createSessionId } from '../lib/codes'
 import type { HotPotatoRoom, RoomState } from '../rooms/types'
 import { ScorecardRoomView } from './ScorecardRoomView'
 
@@ -23,52 +22,113 @@ function loadSeed(code: string): RoomState | undefined {
 export function RoomPage() {
   const { code = '' } = useParams()
   const [params] = useSearchParams()
+  const navigate = useNavigate()
   const isCreator = params.get('host') === '1'
   const playerId = useMemo(() => createPlayerId(), [])
+  const sessionId = useMemo(() => createSessionId(code), [code])
   const seed = useMemo(() => (isCreator ? loadSeed(code) : undefined), [code, isCreator])
   const [name, setName] = useState<string | null>(() => sessionStorage.getItem(`fg_name_${code}`))
   const [tab, setTab] = useState<'main' | 'score'>('main')
   const [nameError, setNameError] = useState('')
+  const [kicked, setKicked] = useState(false)
 
   const { room, status, send } = useRoom({
     code,
     playerId,
     isCreator,
     initialState: seed,
-    enabled: Boolean(name) || isCreator,
+    enabled: true,
   })
 
-  // Resume: offer names already in the room for this device
   const rosterNames = room ? Object.values(room.players).map((p) => p.name) : []
 
+  // Join / take over seat as soon as a name is chosen
   useEffect(() => {
-    if (!name) return
-    if (status !== 'connected' && status !== 'local') return
+    if (!name || kicked) return
+
     if (!room) {
       send({
         type: 'join',
-        player: { id: playerId, name, joinedAt: Date.now() },
+        player: { id: playerId, name, joinedAt: Date.now(), sessionId },
       })
       return
     }
+
+    const self = room.players[playerId]
+    if (self) {
+      // Same device — refresh session / clear left
+      if (self.left || self.sessionId !== sessionId) {
+        send({
+          type: 'join',
+          player: {
+            id: playerId,
+            name,
+            joinedAt: self.joinedAt,
+            sessionId,
+          },
+        })
+      }
+      return
+    }
+
     const existing = Object.values(room.players).find(
       (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
     )
-    if (existing && existing.id !== playerId) {
-      send({ type: 'rejoin', name, playerId })
-    } else if (!room.players[playerId]) {
-      if (nameTaken(room.players, name, playerId)) {
-        setNameError('That name is already taken. Pick another or rejoin with the exact same name.')
-        setName(null)
-        return
-      }
-      send({
-        type: 'join',
-        player: { id: playerId, name, joinedAt: Date.now() },
-      })
+    if (existing) {
+      // Same name from this browser → take over (kicks the other browser)
+      send({ type: 'rejoin', name, playerId, sessionId })
+      return
     }
+
+    send({
+      type: 'join',
+      player: { id: playerId, name, joinedAt: Date.now(), sessionId },
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, name, playerId, room?.code])
+  }, [name, playerId, sessionId, room?.code, room?.players, status, kicked])
+
+  // Detect kicked by another browser using the same name
+  useEffect(() => {
+    if (!name || !room || kicked) return
+    const mine = room.players[playerId]
+    if (mine) {
+      if (mine.sessionId && mine.sessionId !== sessionId) {
+        setKicked(true)
+      }
+      return
+    }
+    const sameName = Object.values(room.players).find(
+      (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
+    )
+    // Seat moved to another playerId/session — this tab lost the claim
+    if (sameName && sameName.sessionId && sameName.sessionId !== sessionId) {
+      setKicked(true)
+    }
+  }, [room, playerId, sessionId, name, kicked])
+
+  if (kicked) {
+    return (
+      <main className="page narrow">
+        <div className="panel">
+          <h1>Signed in elsewhere</h1>
+          <p className="kick-banner">
+            Someone joined this game as <strong>{name}</strong> from another browser. This session
+            was disconnected.
+          </p>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => {
+              sessionStorage.removeItem(`fg_name_${code}`)
+              navigate('/')
+            }}
+          >
+            Back home
+          </button>
+        </div>
+      </main>
+    )
+  }
 
   if (!name) {
     return (
@@ -82,7 +142,7 @@ export function RoomPage() {
             nameError
               ? nameError
               : rosterNames.length
-                ? `Code ${code} — pick a name used in this game, or enter a new one`
+                ? `Code ${code} — pick a name used in this game, or enter a new one. Same name takes over the other browser.`
                 : `Code ${code}`
           }
           suggestedNames={rosterNames}
@@ -104,7 +164,10 @@ export function RoomPage() {
             <h1>Joining…</h1>
             <CodeDropdown code={code} />
           </div>
-          <p className="muted">Waiting for the host room <strong>{code}</strong>.</p>
+          <p className="muted">
+            Connecting to <strong>{code}</strong>
+            {status === 'connecting' ? '…' : ` (${status})`}. Your join is already sent.
+          </p>
           {!isAudioUnlocked() ? (
             <button type="button" className="btn secondary" onClick={() => void unlockAudio()}>
               Enable sound
@@ -145,6 +208,7 @@ export function RoomPage() {
     <ScorecardRoomView
       room={room}
       playerId={playerId}
+      sessionId={sessionId}
       tab={tab}
       onTab={setTab}
       send={send}
