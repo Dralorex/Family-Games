@@ -10,9 +10,10 @@ import type { RoomState } from '../rooms/types'
 export function useTrackActiveSession(opts: {
   room: RoomState | null
   name: string | null
+  playerId?: string
   enabled?: boolean
 }) {
-  const { room, name, enabled = true } = opts
+  const { room, name, playerId, enabled = true } = opts
 
   useEffect(() => {
     if (!enabled || !room || !name) return
@@ -30,7 +31,8 @@ export function useTrackActiveSession(opts: {
 
     let prompt: ActiveSession['prompt'] = 'continue'
     let code = room.code
-    let path = `/room/${room.code}`
+    const isHost = Boolean(playerId && room.hostId === playerId)
+    let path = isHost ? `/room/${room.code}?host=1` : `/room/${room.code}`
     let title = room.title
 
     if (room.pullTo) {
@@ -44,24 +46,28 @@ export function useTrackActiveSession(opts: {
       prompt = 'join'
     }
 
-    const session: ActiveSession = {
-      code,
-      name,
-      title,
-      kind: room.kind,
-      partyId: room.partyId,
-      prompt,
-      path,
-      updatedAt: Date.now(),
+    const write = () => {
+      const session: ActiveSession = {
+        code,
+        name,
+        title,
+        kind: room.kind,
+        partyId: room.partyId,
+        prompt,
+        path,
+        updatedAt: Date.now(),
+      }
+      setActiveSession(session)
     }
-    setActiveSession(session)
 
-    const flush = () => setActiveSession(session)
+    write()
+
+    const flush = () => write()
     document.addEventListener('visibilitychange', flush)
     window.addEventListener('pagehide', flush)
     return () => {
       document.removeEventListener('visibilitychange', flush)
       window.removeEventListener('pagehide', flush)
     }
-  }, [room, name, enabled])
+  }, [room, name, playerId, enabled])
 }

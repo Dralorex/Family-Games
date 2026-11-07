@@ -37,6 +37,8 @@ interface RoomBase {
   pullTo?: { code: string; path: string }
   /** Former creator rejoined; current host can restore ownership */
   pendingHostReturn?: HostReturnRequest | null
+  /** Host backgrounded / closed the app — used for auto handoff */
+  hostAwayAt?: number | null
 }
 
 export interface HotPotatoRoom extends RoomBase {
@@ -83,3 +85,9 @@ export type RoomAction =
   | { type: 'pull-party'; fromId: string; code: string; path: string }
   | { type: 'close-room'; fromId: string }
   | { type: 'respond-host-return'; fromId: string; accept: boolean }
+  | { type: 'host-away'; fromId: string }
+  | { type: 'host-back'; fromId: string }
+  /** Next-in-line takes over after host-away timeout or finished-with-host-away */
+  | { type: 'claim-host'; fromId: string }
+  /** Same Players: back to lobby, drop inactive seats, keep active names */
+  | { type: 'restart-same-players'; fromId: string }

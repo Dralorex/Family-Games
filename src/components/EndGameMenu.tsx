@@ -59,8 +59,8 @@ export function EndGameMenu(props: {
       ) : null}
       {props.isHost ? (
         <p className="muted end-menu-hint">
-          Close lobby ends the room for everyone. Players who come back later will land on Home —
-          no Continue Game prompt.
+          Same Players keeps active names and removes anyone who left. Close lobby ends the room for
+          everyone — no Continue Game afterward.
         </p>
       ) : null}
     </div>

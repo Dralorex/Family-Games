@@ -7,7 +7,7 @@ import { HostLeaveModal } from '../components/HostLeaveModal'
 import { HostReturnPrompt } from '../components/HostReturnPrompt'
 import { Podium } from '../components/Podium'
 import { ScorecardTable, exportScorecardPng } from '../components/ScorecardTable'
-import { TabShell } from '../components/TabShell'
+import { TabShell, type RoomTab } from '../components/TabShell'
 import { defaultNextHostId } from '../rooms/reducer'
 import {
   allScoresEntered,
@@ -21,6 +21,7 @@ import {
 import { clearActiveSession, setActiveSession } from '../lib/activeSession'
 import { setActiveParty } from '../lib/party'
 import { saveGame } from '../lib/savedGames'
+import { useHostPresence } from '../hooks/useHostPresence'
 import { useTrackActiveSession } from '../hooks/useTrackActiveSession'
 import { clearPartyInvite } from '../rooms/partyBus'
 import type { useRoom } from '../hooks/useRoom'
@@ -33,25 +34,26 @@ export function ScorecardRoomView(props: {
   playerId: string
   sessionId: string
   name: string
-  tab: 'main' | 'score'
-  onTab: (t: 'main' | 'score') => void
+  tab: RoomTab
+  onTab: (t: RoomTab) => void
   send: ReturnType<typeof useRoom>['send']
 }) {
   const { room, playerId, send } = props
   const navigate = useNavigate()
   const isHost = room.hostId === playerId
   const me = room.players[playerId]
-  useTrackActiveSession({ room, name: props.name })
+  useTrackActiveSession({ room, name: props.name, playerId })
+  useHostPresence({ room, playerId, send })
   const players = Object.values(room.players).sort((a, b) => a.joinedAt - b.joinedAt)
   const active = players.filter((p) => !p.left)
   const [showHostLeave, setShowHostLeave] = useState(false)
   const standings = computeStandings(players, room.scores, room.winDirection)
   const myStanding = standings.find((s) => s.playerId === playerId)
-  const first = standings[0]
   const myTotal = playerTotal(room.scores, playerId)
   const hasAnyScore = Object.values(room.scores).some((r) => Object.keys(r).length > 0)
   const showHero = shouldShowHeroTotal(room.completedRounds, hasAnyScore)
   const showPlace = shouldShowPlace(room.completedRounds, hasAnyScore) || room.status === 'finished'
+  const showHeroName = room.completedRounds >= 1 || room.status === 'finished'
   const missing = missingScorePlayerIds(players, room.scores, room.currentRound)
   const ready = allScoresEntered(players, room.scores, room.currentRound)
 
@@ -232,16 +234,17 @@ export function ScorecardRoomView(props: {
 
   const header = (
     <div className="room-topbar">
-      <CodeDropdown code={room.code} />
       <div className="room-title-block">
         <p className="eyebrow">{room.templateName}</p>
         <h1 className="room-title">{room.title}</h1>
       </div>
       <div className="top-right-place">
-        {showPlace && first ? (
+        {showPlace && myStanding && me ? (
           <span>
-            {first.name} · 1st
+            {me.name} · #{myStanding.place}
           </span>
+        ) : me ? (
+          <span className="muted-inline">{me.name}</span>
         ) : (
           <span className="muted-inline">—</span>
         )}
@@ -327,6 +330,9 @@ export function ScorecardRoomView(props: {
               {room.totalRounds} rounds · {room.winDirection === 'low' ? 'lowest' : 'highest'} wins
             </p>
           )}
+          {room.hostAwayAt && !isHost ? (
+            <p className="warn">Game master stepped away — handoff happens automatically if they don’t return.</p>
+          ) : null}
           {isHost ? (
             <button
               type="button"
@@ -339,15 +345,6 @@ export function ScorecardRoomView(props: {
           ) : (
             <p className="muted">Waiting for game master…</p>
           )}
-          <button type="button" className="btn secondary" onClick={requestLeave}>
-            Leave game
-          </button>
-        </div>
-      ) : null}
-
-      {(room.status === 'playing' || room.status === 'finished') && showPlace && first ? (
-        <div className="bubble first-bubble">
-          <strong>{first.name}</strong> is in 1st!
         </div>
       ) : null}
 
@@ -358,7 +355,7 @@ export function ScorecardRoomView(props: {
               <span className="hero-number">{showHero ? myTotal : '—'}</span>
               {showPlace && myStanding ? <span className="hero-place">#{myStanding.place}</span> : null}
             </div>
-            <p className="muted">{me?.name ?? 'You'}</p>
+            {showHeroName ? <p className="muted">{me?.name ?? 'You'}</p> : null}
           </div>
         </div>
       )}
@@ -457,18 +454,6 @@ export function ScorecardRoomView(props: {
               {ready ? 'Waiting for game master to advance…' : 'Enter scores when ready.'}
             </p>
           )}
-          <button type="button" className="btn secondary" onClick={requestLeave}>
-            Leave game
-          </button>
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={() => {
-              void saveGame(room)
-            }}
-          >
-            Save game
-          </button>
         </div>
       ) : null}
 
@@ -493,6 +478,9 @@ export function ScorecardRoomView(props: {
             onVote={(vote: EndVote) => {
               send({ type: 'cast-end-vote', fromId: playerId, vote })
               if (vote === 'leave') requestLeave()
+              if (vote === 'same-players' && isHost) {
+                send({ type: 'restart-same-players', fromId: playerId })
+              }
             }}
             onHostNewGame={() => {
               setActiveParty({ partyId: room.partyId, hostId: room.hostId, code: room.code })
@@ -535,9 +523,46 @@ export function ScorecardRoomView(props: {
     </div>
   )
 
+  const settings = (
+    <div className="scorecard-main-stack">
+      <div className="bubble">
+        <h2>Settings</h2>
+        <p className="muted">Room code</p>
+        <CodeDropdown code={room.code} />
+        {room.hostAwayAt && isHost ? (
+          <p className="ok">Welcome back — you’re still game master.</p>
+        ) : null}
+        {room.hostAwayAt && !isHost ? (
+          <p className="warn">
+            Game master is away. The next player in line becomes host after 5 minutes (or right away
+            if the game already ended).
+          </p>
+        ) : null}
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => {
+            void saveGame(room)
+          }}
+        >
+          Save game
+        </button>
+        <button type="button" className="btn danger" onClick={requestLeave}>
+          Leave game
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <main className="page room-page">
-      <TabShell main={main} score={score} tab={props.tab} onTab={props.onTab} />
+      <TabShell
+        main={main}
+        score={score}
+        settings={settings}
+        tab={props.tab}
+        onTab={props.onTab}
+      />
     </main>
   )
 }
