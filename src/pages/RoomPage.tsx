@@ -66,7 +66,8 @@ export function RoomPage() {
         : false)
 
     if (!room) {
-      const pendingKey = `pending:${code}:${name}:${sessionId}`
+      // Include sync status so a join fired before MQTT connected is retried after connect
+      const pendingKey = `pending:${code}:${name}:${sessionId}:${status}`
       if (joinKeyRef.current === pendingKey) return
       joinKeyRef.current = pendingKey
       send({

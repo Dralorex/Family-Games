@@ -17,6 +17,8 @@ export function useRoom(opts: {
   const [room, setRoom] = useState<RoomState | null>(seeded)
   const [status, setStatus] = useState<SyncStatus>('connecting')
   const syncRef = useRef<RoomSync | null>(null)
+  const claimNameRef = useRef(claimName)
+  claimNameRef.current = claimName
 
   useEffect(() => {
     if (!enabled || !code) return
@@ -25,7 +27,8 @@ export function useRoom(opts: {
       code,
       playerId,
       isCreator,
-      claimName,
+      // Live read so typing a name does not tear down the MQTT socket mid-join
+      getClaimName: () => claimNameRef.current,
       initialState: seeded ?? undefined,
       onState: (state) => {
         const normalized = normalizeRoom(state)
@@ -44,8 +47,8 @@ export function useRoom(opts: {
       sync.close()
       syncRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- connect once per code/player/claim
-  }, [code, playerId, isCreator, claimName, enabled])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- connect once per code/player
+  }, [code, playerId, isCreator, enabled])
 
   const send = (action: RoomAction) => {
     syncRef.current?.publishAction(action)
