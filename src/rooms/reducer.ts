@@ -84,6 +84,41 @@ function nextHostCandidate(room: RoomState, excludingId: string): string | undef
   return activeList(room).find((p) => p.id !== excludingId)?.id
 }
 
+/** Host closed the app — hand off after this, or immediately if the game already ended. */
+export const HOST_AWAY_MS = 5 * 60 * 1000
+
+export function shouldAutoClaimHost(room: RoomState, playerId: string, now = Date.now()): boolean {
+  if (!room.hostAwayAt) return false
+  if (room.hostId === playerId) return false
+  if (room.players[playerId]?.left) return false
+  const next = nextHostCandidate(room, room.hostId)
+  if (next !== playerId) return false
+  if (room.status === 'finished') return true
+  return now - room.hostAwayAt >= HOST_AWAY_MS
+}
+
+function pruneInactivePlayers(room: ScorecardRoom): ScorecardRoom {
+  const kept: Record<string, RoomPlayer> = {}
+  const scores: ScorecardRoom['scores'] = {}
+  for (const p of playersList(room)) {
+    if (p.left) continue
+    kept[p.id] = { ...p, left: false }
+    if (room.scores[p.id]) scores[p.id] = room.scores[p.id]!
+  }
+  let hostId = room.hostId
+  if (!kept[hostId]) {
+    hostId = Object.values(kept).sort((a, b) => a.joinedAt - b.joinedAt)[0]?.id ?? room.hostId
+  }
+  return {
+    ...room,
+    hostId,
+    players: kept,
+    scores,
+    pendingHostReturn: null,
+    hostAwayAt: null,
+  }
+}
+
 /**
  * Move a roster seat onto a new browser/playerId + session.
  * Active host swapping browsers keeps ownership; left creator asks to get it back
@@ -510,7 +545,56 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
 
     case 'close-room': {
       if (action.fromId !== room.hostId) return room
-      return { ...room, status: 'closed' }
+      return { ...room, status: 'closed', hostAwayAt: null }
+    }
+
+    case 'host-away': {
+      if (action.fromId !== room.hostId) return room
+      return { ...room, hostAwayAt: now }
+    }
+
+    case 'host-back': {
+      if (action.fromId !== room.hostId) return room
+      return { ...room, hostAwayAt: null }
+    }
+
+    case 'claim-host': {
+      const claimant = room.players[action.fromId]
+      if (!claimant || claimant.left) return room
+      if (room.hostId === action.fromId) {
+        return { ...room, hostAwayAt: null }
+      }
+      if (!room.hostAwayAt) return room
+      const next = nextHostCandidate(room, room.hostId)
+      if (next !== action.fromId) return room
+      const due =
+        room.status === 'finished' || now - room.hostAwayAt >= HOST_AWAY_MS
+      if (!due) return room
+      return {
+        ...room,
+        hostId: action.fromId,
+        hostAwayAt: null,
+        pendingHostReturn: null,
+      }
+    }
+
+    case 'restart-same-players': {
+      if (room.kind !== 'scorecard') return room
+      if (action.fromId !== room.hostId || room.status !== 'finished') return room
+      const pruned = pruneInactivePlayers(room)
+      return {
+        ...pruned,
+        status: 'lobby',
+        currentRound: 1,
+        completedRounds: 0,
+        scores: {},
+        endVotes: {},
+        finishedAt: undefined,
+        regrouping: false,
+        pullTo: undefined,
+        pendingHostReturn: null,
+        hostAwayAt: null,
+      }
     }
 
     default:

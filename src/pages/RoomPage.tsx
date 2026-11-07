@@ -2,8 +2,10 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { playAlarm, unlockAudio, isAudioUnlocked } from '../audio/alarm'
 import { CodeDropdown } from '../components/CodeDropdown'
-import { TabShell } from '../components/TabShell'
+import { HostLeaveModal } from '../components/HostLeaveModal'
+import { TabShell, type RoomTab } from '../components/TabShell'
 import { UsernameGate } from '../components/UsernameGate'
+import { useHostPresence } from '../hooks/useHostPresence'
 import { useRoom } from '../hooks/useRoom'
 import { useTrackActiveSession } from '../hooks/useTrackActiveSession'
 import { clearActiveSession } from '../lib/activeSession'
@@ -29,7 +31,7 @@ export function RoomPage() {
   const playerId = useMemo(() => createPlayerId(), [])
   const sessionId = useMemo(() => createSessionId(code), [code])
   const [name, setName] = useState<string | null>(() => sessionStorage.getItem(`fg_name_${code}`))
-  const [tab, setTab] = useState<'main' | 'score'>('main')
+  const [tab, setTab] = useState<RoomTab>('main')
   const [nameError, setNameError] = useState('')
   const [kicked, setKicked] = useState(false)
 
@@ -46,7 +48,8 @@ export function RoomPage() {
     enabled: true,
   })
 
-  useTrackActiveSession({ room, name })
+  useTrackActiveSession({ room, name, playerId })
+  useHostPresence({ room, playerId, send })
 
   useEffect(() => {
     if (room?.status === 'closed') clearActiveSession()
@@ -258,16 +261,19 @@ export function RoomPage() {
 function HotPotatoView(props: {
   room: HotPotatoRoom
   playerId: string
-  tab: 'main' | 'score'
-  onTab: (t: 'main' | 'score') => void
+  tab: RoomTab
+  onTab: (t: RoomTab) => void
   send: ReturnType<typeof useRoom>['send']
 }) {
   const { room, playerId, send } = props
   const isHost = room.hostId === playerId
   const alive = room.aliveIds.includes(playerId)
   const players = Object.values(room.players)
+  const me = room.players[playerId]
   const [alarmedFor, setAlarmedFor] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [showHostLeave, setShowHostLeave] = useState(false)
+  const navigate = useNavigate()
 
   const fuseDone =
     room.timer.status === 'ended' ||
@@ -288,18 +294,48 @@ function HotPotatoView(props: {
 
   const placementRows = [...room.placements].sort((a, b) => a.place - b.place)
   const myPlace = room.placements.find((p) => p.playerId === playerId)?.place
-  const winner = placementRows.find((p) => p.place === 1)
+
+  const requestLeave = () => {
+    const activeOthers = players.filter((p) => !p.left && p.id !== playerId)
+    if (isHost && activeOthers.length > 0) {
+      setShowHostLeave(true)
+      return
+    }
+    send({ type: 'leave', playerId })
+    clearActiveSession()
+    navigate('/')
+  }
 
   const main = (
     <div className="panel room-main">
+      {showHostLeave ? (
+        <HostLeaveModal
+          players={players}
+          hostId={playerId}
+          onCancel={() => setShowHostLeave(false)}
+          onConfirm={(newHostId) => {
+            setShowHostLeave(false)
+            send({ type: 'leave', playerId, ...(newHostId ? { newHostId } : {}) })
+            clearActiveSession()
+            navigate('/')
+          }}
+        />
+      ) : null}
       <div className="room-topbar">
-        <CodeDropdown code={room.code} />
         <div className="room-title-block">
           <p className="eyebrow">Hot Potato</p>
           <h1 className="room-title">{room.title}</h1>
         </div>
         <div className="top-right-place">
-          {winner ? <span>{room.players[winner.playerId]?.name} · 1st</span> : <span>—</span>}
+          {myPlace && me ? (
+            <span>
+              {me.name} · #{myPlace}
+            </span>
+          ) : me ? (
+            <span>{me.name}</span>
+          ) : (
+            <span>—</span>
+          )}
         </div>
       </div>
 
@@ -418,9 +454,26 @@ function HotPotatoView(props: {
     </div>
   )
 
+  const settings = (
+    <div className="panel">
+      <h2>Settings</h2>
+      <p className="muted">Room code</p>
+      <CodeDropdown code={room.code} />
+      <button type="button" className="btn danger" onClick={requestLeave}>
+        Leave game
+      </button>
+    </div>
+  )
+
   return (
     <main className="page room-page">
-      <TabShell main={main} score={score} tab={props.tab} onTab={props.onTab} />
+      <TabShell
+        main={main}
+        score={score}
+        settings={settings}
+        tab={props.tab}
+        onTab={props.onTab}
+      />
     </main>
   )
 }

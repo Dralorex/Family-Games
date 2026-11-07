@@ -1,7 +1,7 @@
 import mqtt, { type MqttClient } from 'mqtt'
 import { claimFromRoom, publishOwnerClaim } from './ownerIndex'
 import { getCachedRoom, setCachedRoom } from './roomCache'
-import { applyAction, tickHotPotato } from './reducer'
+import { applyAction, shouldAutoClaimHost, tickHotPotato } from './reducer'
 import type { RoomAction, RoomState } from './types'
 
 const BROKER_URLS = [
@@ -375,9 +375,16 @@ export function connectRoomSync(opts: {
 
   // Keep poking the host until we actually have room state (covers lost early joins)
   retryTimer = setInterval(() => {
-    if (closed || room || !mqttConnected) return
-    askForState(true)
-    publishActionToBus({ type: 'hello', fromId: playerId })
+    if (closed || !mqttConnected) return
+    if (!room) {
+      askForState(true)
+      publishActionToBus({ type: 'hello', fromId: playerId })
+      return
+    }
+    if (shouldAutoClaimHost(room, playerId) && !isAuthority) {
+      isAuthority = true
+      handleAction({ type: 'claim-host', fromId: playerId })
+    }
   }, 2500)
 
   tickTimer = setInterval(() => {
@@ -397,6 +404,21 @@ export function connectRoomSync(opts: {
       }
       if (room && canForceReclaim(room) && !isAuthority) {
         isAuthority = true
+      }
+      // Next-in-line can take authority to claim-host after host-away
+      if (
+        room &&
+        !isAuthority &&
+        (action.type === 'claim-host' || action.type === 'host-away' || action.type === 'host-back') &&
+        (action.type !== 'claim-host' || shouldAutoClaimHost(room, playerId))
+      ) {
+        if (action.type === 'claim-host' && shouldAutoClaimHost(room, playerId)) {
+          isAuthority = true
+        }
+        // Host marking away/back must still apply even if we're the host authority
+        if (action.type === 'host-away' || action.type === 'host-back') {
+          if (room.hostId === playerId) isAuthority = true
+        }
       }
       if (isAuthority && room) {
         handleAction(action)
