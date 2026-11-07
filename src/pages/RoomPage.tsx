@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { playAlarm, unlockAudio, isAudioUnlocked } from '../audio/alarm'
 import { CodeDropdown } from '../components/CodeDropdown'
 import { TabShell } from '../components/TabShell'
@@ -45,8 +45,9 @@ export function RoomPage() {
   })
 
   const rosterNames = room ? Object.values(room.players).map((p) => p.name) : []
+  const joinKeyRef = useRef('')
 
-  // Join / take over seat as soon as a name is chosen
+  // Join / take over seat as soon as a name is chosen (once per seat claim, not every roster pulse)
   useEffect(() => {
     if (!name || kicked) return
 
@@ -57,6 +58,9 @@ export function RoomPage() {
         : false)
 
     if (!room) {
+      const pendingKey = `pending:${code}:${name}:${sessionId}`
+      if (joinKeyRef.current === pendingKey) return
+      joinKeyRef.current = pendingKey
       send({
         type: 'join',
         player: { id: playerId, name, joinedAt: Date.now(), sessionId },
@@ -67,19 +71,25 @@ export function RoomPage() {
 
     const self = room.players[playerId]
     if (self) {
-      // Same device — refresh session / clear left
-      if (self.left || self.sessionId !== sessionId || (reclaimHost && room.hostId !== playerId)) {
-        send({
-          type: 'join',
-          player: {
-            id: playerId,
-            name,
-            joinedAt: self.joinedAt,
-            sessionId,
-          },
-          reclaimHost,
-        })
+      const needsRefresh =
+        self.left || self.sessionId !== sessionId || (reclaimHost && room.hostId !== playerId)
+      if (!needsRefresh) {
+        joinKeyRef.current = `seated:${playerId}:${sessionId}`
+        return
       }
+      const refreshKey = `refresh:${playerId}:${sessionId}:${reclaimHost}:${self.left}`
+      if (joinKeyRef.current === refreshKey) return
+      joinKeyRef.current = refreshKey
+      send({
+        type: 'join',
+        player: {
+          id: playerId,
+          name,
+          joinedAt: self.joinedAt,
+          sessionId,
+        },
+        reclaimHost,
+      })
       return
     }
 
@@ -87,18 +97,23 @@ export function RoomPage() {
       (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
     )
     if (existing) {
-      // Same name from this browser → take over (kicks the other browser)
+      const rejoinKey = `rejoin:${existing.id}:${sessionId}:${reclaimHost}`
+      if (joinKeyRef.current === rejoinKey) return
+      joinKeyRef.current = rejoinKey
       send({ type: 'rejoin', name, playerId, sessionId, reclaimHost })
       return
     }
 
+    const joinKey = `join:${name}:${sessionId}`
+    if (joinKeyRef.current === joinKey) return
+    joinKeyRef.current = joinKey
     send({
       type: 'join',
       player: { id: playerId, name, joinedAt: Date.now(), sessionId },
       reclaimHost,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, playerId, sessionId, room?.code, room?.players, status, kicked, hostParam])
+  }, [name, playerId, sessionId, room?.code, room?.hostId, status, kicked, hostParam])
 
   // Detect kicked by another browser using the same name
   useEffect(() => {
