@@ -7,8 +7,6 @@ const OPTIONS: { vote: EndVote; label: string }[] = [
   { vote: 'leave', label: 'Leave' },
 ]
 
-/** Same Players (host): resets to lobby and drops anyone who left mid-game. */
-
 export function EndGameMenu(props: {
   isHost: boolean
   playerId: string
