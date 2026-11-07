@@ -193,7 +193,11 @@ button {
   color: rgba(246, 241, 230, 0.72);
 }
 
-.panel .muted {
+/* Cream cards sit inside .page — don’t use the light-on-dark muted color there */
+.panel .muted,
+.bubble .muted,
+.page .panel .muted,
+.page .bubble .muted {
   color: var(--muted);
 }
 
@@ -736,6 +740,11 @@ button {
 
 .hero-bubble {
   text-align: center;
+}
+
+/* Player name under the big score — was light-on-cream via .page .muted */
+.hero-bubble .muted {
+  color: #000;
 }
 
 .round-bubble .round-label {
