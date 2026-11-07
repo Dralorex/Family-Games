@@ -30,6 +30,33 @@ function namesMatch(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
 
+const STATUS_RANK: Record<RoomState['status'], number> = {
+  lobby: 0,
+  playing: 1,
+  finished: 2,
+  closed: 3,
+}
+
+/** Prefer progressed game status so a stale retained lobby cannot overwrite playing. */
+function pickRicherState(local: RoomState | null, incoming: RoomState): RoomState {
+  if (!local) return incoming
+  if (local.createdAt !== incoming.createdAt) {
+    return incoming.createdAt >= local.createdAt ? incoming : local
+  }
+  const localRank = STATUS_RANK[local.status]
+  const incomingRank = STATUS_RANK[incoming.status]
+  if (incomingRank !== localRank) {
+    return incomingRank > localRank ? incoming : local
+  }
+  const localPlayers = Object.keys(local.players).length
+  const incomingPlayers = Object.keys(incoming.players).length
+  if (incomingPlayers !== localPlayers) {
+    return incomingPlayers > localPlayers ? incoming : local
+  }
+  // Same shape — keep local to avoid echo thrash
+  return local
+}
+
 /**
  * Local-first room sync.
  * - Host applies actions immediately (works even if MQTT is blocked).
@@ -64,9 +91,7 @@ export function connectRoomSync(opts: {
     return true
   }
 
-  let isAuthority = Boolean(
-    canForceReclaim(room) || (room && room.hostId === playerId),
-  )
+  let isAuthority = Boolean(canForceReclaim(room) || (room && room.hostId === playerId))
 
   let tickTimer: ReturnType<typeof setInterval> | null = null
   let closed = false
@@ -74,23 +99,39 @@ export function connectRoomSync(opts: {
   let client: MqttClient | null = null
   let brokerIndex = 0
   let requestedState = false
+  /** Last payload we published — MQTT brokers echo publishes back to the publisher. */
+  let lastPublishedPayload = ''
+  /** Only announce reclaim once per connection (avoid emit→echo→emit loops). */
+  let reclaimAnnounced = false
+  let ownerPublishTimer: ReturnType<typeof setTimeout> | null = null
+  let lastOwnerClaimJson = ''
 
   const channel =
     typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(`fg-room-${code}`) : null
 
   onStatus('connecting')
 
-  const publishOwner = (state: RoomState) => {
-    if (state.status === 'closed') {
-      void publishOwnerClaim(state.creatorName, null).catch(() => {})
-      return
-    }
-    void publishOwnerClaim(state.creatorName, claimFromRoom(state)).catch(() => {})
+  const scheduleOwnerPublish = (state: RoomState) => {
+    const claim =
+      state.status === 'closed' ? null : claimFromRoom(state)
+    const serialized = claim ? JSON.stringify(claim) : ''
+    if (serialized === lastOwnerClaimJson) return
+    lastOwnerClaimJson = serialized
+    if (ownerPublishTimer) clearTimeout(ownerPublishTimer)
+    ownerPublishTimer = setTimeout(() => {
+      ownerPublishTimer = null
+      if (claim) {
+        void publishOwnerClaim(state.creatorName, claim).catch(() => {})
+      } else {
+        void publishOwnerClaim(state.creatorName, null).catch(() => {})
+      }
+    }, 400)
   }
 
   const publishMqttState = (state: RoomState) => {
     if (!client || !mqttConnected) return
     const payload = state.status === 'closed' ? '' : JSON.stringify(state)
+    lastPublishedPayload = payload
     client.publish(stateTopic(code), payload, { qos: 0, retain: true })
   }
 
@@ -105,7 +146,7 @@ export function connectRoomSync(opts: {
     }
     publishMqttState(state)
     if (isAuthority) {
-      publishOwner(state)
+      scheduleOwnerPublish(state)
     }
   }
 
@@ -117,9 +158,51 @@ export function connectRoomSync(opts: {
     if (incoming.hostId === playerId || canForceReclaim(incoming)) {
       isAuthority = true
     } else if (isAuthority && incoming.hostId !== playerId) {
-      // Another browser took the host seat — stop applying actions here
       isAuthority = false
     }
+  }
+
+  /**
+   * Handle remote/retained state without re-publishing our own echoes.
+   * Reclaim only republishes once when we actually need to take the host seat.
+   */
+  const handleIncomingState = (incoming: RoomState, fromBroadcast: boolean) => {
+    if (room && incoming.createdAt < room.createdAt) return
+
+    const snapshot = pickRicherState(room, incoming)
+    const sameAsLocal = room !== null && snapshot === room
+
+    if (canForceReclaim(incoming) || canForceReclaim(snapshot)) {
+      const needsHostTakeover = snapshot.hostId !== playerId
+      isAuthority = true
+
+      if (needsHostTakeover && !reclaimAnnounced) {
+        reclaimAnnounced = true
+        adoptIncoming(snapshot)
+        emitState(snapshot)
+        return
+      }
+
+      // Already host authority: adopt richer remote state locally, never re-emit echoes
+      if (!sameAsLocal) {
+        adoptIncoming(snapshot)
+      }
+      return
+    }
+
+    if (!isAuthority) {
+      if (!sameAsLocal) adoptIncoming(snapshot)
+      return
+    }
+
+    // Authority: only yield if another browser took the host seat
+    if (snapshot.hostId !== playerId) {
+      adoptIncoming(snapshot)
+      return
+    }
+
+    // Ignore BroadcastChannel/MQTT echoes of our own authority state
+    if (fromBroadcast || sameAsLocal) return
   }
 
   const handleAction = (action: RoomAction) => {
@@ -164,15 +247,7 @@ export function connectRoomSync(opts: {
       if (closed) return
       const data = event.data as { kind: string; state?: RoomState; action?: RoomAction }
       if (data.kind === 'state' && data.state) {
-        if (!isAuthority || !room || canForceReclaim(data.state)) {
-          const wasAuthority = isAuthority
-          adoptIncoming(data.state)
-          if (canForceReclaim(data.state) && (!wasAuthority || data.state.hostId !== playerId)) {
-            // New host browser: republish so connected phones refresh onto this authority
-            isAuthority = true
-            emitState(data.state)
-          }
-        }
+        handleIncomingState(data.state, true)
         return
       }
       if (data.kind === 'action' && data.action) {
@@ -243,33 +318,11 @@ export function connectRoomSync(opts: {
         const raw = payload.toString()
         if (topic === stateTopic(code)) {
           if (!raw) return
+          // Ignore our own publish echoed by the broker (main spazzing cause)
+          if (raw === lastPublishedPayload) return
           const incoming = JSON.parse(raw) as RoomState
           if (!(incoming && typeof incoming === 'object' && 'kind' in incoming)) return
-
-          if (room && incoming.createdAt === room.createdAt) {
-            if (canForceReclaim(incoming)) {
-              const previous = room
-              const preferIncoming =
-                !previous ||
-                Object.keys(incoming.players).length >= Object.keys(previous.players).length
-              const snapshot = preferIncoming ? incoming : previous
-              adoptIncoming(snapshot)
-              isAuthority = true
-              emitState(snapshot)
-            } else if (!isAuthority) {
-              adoptIncoming(incoming)
-            } else if (incoming.hostId !== playerId) {
-              adoptIncoming(incoming)
-            }
-          } else if (!room || incoming.createdAt >= room.createdAt) {
-            if (!isAuthority || !room || canForceReclaim(incoming)) {
-              adoptIncoming(incoming)
-              if (canForceReclaim(incoming)) {
-                isAuthority = true
-                emitState(incoming)
-              }
-            }
-          }
+          handleIncomingState(incoming, false)
           return
         }
         if (topic === actionTopic(code) && raw) {
@@ -338,6 +391,7 @@ export function connectRoomSync(opts: {
     close: () => {
       closed = true
       if (tickTimer) clearInterval(tickTimer)
+      if (ownerPublishTimer) clearTimeout(ownerPublishTimer)
       try {
         channel?.close()
       } catch {
