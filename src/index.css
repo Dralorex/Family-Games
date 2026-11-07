@@ -727,6 +727,11 @@ button {
   text-align: center;
   font-size: 1.05rem;
   background: linear-gradient(180deg, #fff6ea, var(--surface));
+  color: var(--ink);
+}
+
+.first-bubble strong {
+  color: #000;
 }
 
 .hero-bubble {
@@ -767,6 +772,30 @@ button {
 
 .muted-inline {
   color: rgba(246, 241, 230, 0.55);
+}
+
+/* Cream panels: light topbar text was unreadable (esp. “Name · 1st”) */
+.panel .room-topbar,
+.panel .room-title {
+  color: var(--ink);
+}
+
+.panel .room-title-block .eyebrow {
+  color: var(--muted);
+}
+
+.panel .top-right-place {
+  color: #000;
+}
+
+.panel .muted-inline {
+  color: var(--muted);
+}
+
+.panel .code-dropdown-trigger {
+  border-color: var(--line);
+  background: rgba(20, 32, 27, 0.06);
+  color: var(--ink);
 }
 
 .code-dropdown {
