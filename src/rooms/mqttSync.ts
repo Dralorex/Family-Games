@@ -70,11 +70,15 @@ export function connectRoomSync(opts: {
   isCreator: boolean
   /** When set with isCreator, must match room.creatorName to reclaim */
   claimName?: string | null
+  /** Prefer live getter so name entry does not reconnect MQTT */
+  getClaimName?: () => string | null | undefined
   initialState?: RoomState
   onState: (state: RoomState) => void
   onStatus: (status: SyncStatus) => void
 }): RoomSync {
-  const { code, playerId, isCreator, claimName = null, initialState, onState, onStatus } = opts
+  const { code, playerId, isCreator, initialState, onState, onStatus } = opts
+  const readClaimName = () =>
+    opts.getClaimName ? opts.getClaimName() ?? null : opts.claimName ?? null
 
   const cached = getCachedRoom(code)
   let room: RoomState | null = cached ?? initialState ?? null
@@ -87,6 +91,7 @@ export function connectRoomSync(opts: {
   const canForceReclaim = (state: RoomState | null) => {
     if (!isCreator) return false
     if (!state) return true
+    const claimName = readClaimName()
     if (claimName && !namesMatch(state.creatorName, claimName)) return false
     return true
   }
@@ -94,11 +99,14 @@ export function connectRoomSync(opts: {
   let isAuthority = Boolean(canForceReclaim(room) || (room && room.hostId === playerId))
 
   let tickTimer: ReturnType<typeof setInterval> | null = null
+  let retryTimer: ReturnType<typeof setInterval> | null = null
   let closed = false
   let mqttConnected = false
   let client: MqttClient | null = null
   let brokerIndex = 0
   let requestedState = false
+  /** Actions published before the socket is up — flush on connect. */
+  const pendingActions: RoomAction[] = []
   /** Last payload we published — MQTT brokers echo publishes back to the publisher. */
   let lastPublishedPayload = ''
   /** Only announce reclaim once per connection (avoid emit→echo→emit loops). */
@@ -228,10 +236,7 @@ export function connectRoomSync(opts: {
     }
   }
 
-  const askForState = () => {
-    if (requestedState || room) return
-    requestedState = true
-    const action: RoomAction = { type: 'request-state', fromId: playerId }
+  const publishActionToBus = (action: RoomAction) => {
     try {
       channel?.postMessage({ kind: 'action', action })
     } catch {
@@ -239,7 +244,26 @@ export function connectRoomSync(opts: {
     }
     if (client && mqttConnected) {
       client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
+      return
     }
+    // Don't drop joins/hellos that fire before the socket is ready
+    pendingActions.push(action)
+  }
+
+  const flushPendingActions = () => {
+    if (!client || !mqttConnected || pendingActions.length === 0) return
+    const queued = pendingActions.splice(0, pendingActions.length)
+    for (const action of queued) {
+      client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
+    }
+  }
+
+  const askForState = (force = false) => {
+    if (room) return
+    if (requestedState && !force) return
+    requestedState = true
+    const action: RoomAction = { type: 'request-state', fromId: playerId }
+    publishActionToBus(action)
   }
 
   if (channel) {
@@ -295,19 +319,14 @@ export function connectRoomSync(opts: {
           failToNext()
           return
         }
+        flushPendingActions()
         if (isAuthority && room) {
           emitState(room)
         } else if (!room) {
-          askForState()
-          nextClient.publish(
-            actionTopic(code),
-            JSON.stringify({ type: 'hello', fromId: playerId } satisfies RoomAction),
-          )
+          askForState(true)
+          publishActionToBus({ type: 'hello', fromId: playerId })
         } else {
-          nextClient.publish(
-            actionTopic(code),
-            JSON.stringify({ type: 'hello', fromId: playerId } satisfies RoomAction),
-          )
+          publishActionToBus({ type: 'hello', fromId: playerId })
         }
       })
     })
@@ -354,6 +373,13 @@ export function connectRoomSync(opts: {
     }
   }, 2500)
 
+  // Keep poking the host until we actually have room state (covers lost early joins)
+  retryTimer = setInterval(() => {
+    if (closed || room || !mqttConnected) return
+    askForState(true)
+    publishActionToBus({ type: 'hello', fromId: playerId })
+  }, 2500)
+
   tickTimer = setInterval(() => {
     if (!isAuthority || !room || room.kind !== 'hot-potato') return
     const next = tickHotPotato(room)
@@ -366,9 +392,7 @@ export function connectRoomSync(opts: {
     publishAction: (action: RoomAction) => {
       if (action.type === 'request-state') {
         handleAction(action)
-        if (client && mqttConnected) {
-          client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
-        }
+        publishActionToBus(action)
         return
       }
       if (room && canForceReclaim(room) && !isAuthority) {
@@ -378,19 +402,13 @@ export function connectRoomSync(opts: {
         handleAction(action)
         return
       }
-      try {
-        channel?.postMessage({ kind: 'action', action })
-      } catch {
-        // ignore
-      }
-      if (client && mqttConnected) {
-        client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
-      }
+      publishActionToBus(action)
     },
     publishState: emitState,
     close: () => {
       closed = true
       if (tickTimer) clearInterval(tickTimer)
+      if (retryTimer) clearInterval(retryTimer)
       if (ownerPublishTimer) clearTimeout(ownerPublishTimer)
       try {
         channel?.close()
