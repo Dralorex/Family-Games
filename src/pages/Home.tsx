@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PartyListener } from '../components/PartyListener'
+import { ResumePrompt } from '../components/ResumePrompt'
 import { getActiveParty } from '../lib/party'
 
 export function Home() {
@@ -14,6 +15,7 @@ export function Home() {
         <p className="home-support">
           Join with a short code — digital games or shared scorecards for the table.
         </p>
+        <ResumePrompt />
         {party ? (
           <p className="home-support party-banner">
             Group still connected — pick a game and everyone can follow the host.

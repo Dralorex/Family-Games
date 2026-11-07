@@ -509,6 +509,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
     }
 
     case 'close-room': {
+      if (action.fromId !== room.hostId) return room
       return { ...room, status: 'closed' }
     }
 

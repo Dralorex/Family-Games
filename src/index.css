@@ -940,3 +940,35 @@ button {
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
+
+.resume-banner {
+  margin: 0.35rem 0 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  background: rgba(246, 241, 230, 0.14);
+  border: 1.5px solid rgba(246, 241, 230, 0.28);
+  display: grid;
+  gap: 0.65rem;
+  text-align: left;
+  color: var(--surface-solid);
+}
+
+.resume-banner p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.end-menu-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+
+.end-menu .btn.danger {
+  margin-top: 0.35rem;
+}

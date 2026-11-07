@@ -1,5 +1,4 @@
-import type { EndVote } from '../rooms/types'
-import type { RoomPlayer } from '../rooms/types'
+import type { EndVote, RoomPlayer } from '../rooms/types'
 
 const OPTIONS: { vote: EndVote; label: string }[] = [
   { vote: 'new-game', label: 'New Game' },
@@ -15,6 +14,8 @@ export function EndGameMenu(props: {
   votes: Record<string, EndVote>
   onVote: (vote: EndVote) => void
   onHostNewGame: () => void
+  /** Host ends the lobby for everyone — no Continue Game afterward */
+  onCloseLobby?: () => void
 }) {
   const active = props.players.filter((p) => !p.left)
   const total = active.length
@@ -25,7 +26,6 @@ export function EndGameMenu(props: {
     },
     {} as Record<EndVote, number>,
   )
-  // Denominator shrinks as people leave
   const remaining = active.filter((p) => props.votes[p.id] !== 'leave').length || total
   const myVote = props.votes[props.playerId]
 
@@ -52,6 +52,17 @@ export function EndGameMenu(props: {
           </button>
         ))}
       </div>
+      {props.isHost && props.onCloseLobby ? (
+        <button type="button" className="btn danger" onClick={props.onCloseLobby}>
+          Close lobby
+        </button>
+      ) : null}
+      {props.isHost ? (
+        <p className="muted end-menu-hint">
+          Close lobby ends the room for everyone. Players who come back later will land on Home —
+          no Continue Game prompt.
+        </p>
+      ) : null}
     </div>
   )
 }

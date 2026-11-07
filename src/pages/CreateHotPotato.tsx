@@ -4,8 +4,10 @@ import { UsernameGate } from '../components/UsernameGate'
 import { generateCode, createPlayerId, createSessionId } from '../lib/codes'
 import { getLastTimerRange, saveTimerRange } from '../lib/storage'
 import { getActiveParty, setActiveParty } from '../lib/party'
+import { setActiveSession } from '../lib/activeSession'
 import { createHotPotatoRoom } from '../rooms/factory'
 import { claimFromRoom, publishOwnerClaim } from '../rooms/ownerIndex'
+import { publishPartyInvite } from '../rooms/partyBus'
 
 const PRESETS = [
   { label: '15–45s', min: 15, max: 45 },
@@ -61,14 +63,33 @@ export function CreateHotPotato() {
     void publishOwnerClaim(name, claimFromRoom(room)).catch(() => {})
     if (party) {
       setActiveParty({ partyId: party.partyId, hostId: host.id, code })
-      // BroadcastChannel pull for same-browser party members
+      const path = `/room/${code}`
       try {
         const ch = new BroadcastChannel(`fg-party-${party.partyId}`)
-        ch.postMessage({ type: 'pull', path: `/room/${code}` })
+        ch.postMessage({ type: 'pull', path, prompt: 'join' })
         ch.close()
       } catch {
         // ignore
       }
+      void publishPartyInvite({
+        v: 1,
+        partyId: party.partyId,
+        code,
+        path,
+        prompt: 'join',
+        title: room.title,
+        updatedAt: Date.now(),
+      }).catch(() => {})
+      setActiveSession({
+        code,
+        name,
+        title: room.title,
+        kind: 'hot-potato',
+        partyId: party.partyId,
+        prompt: 'join',
+        path,
+        updatedAt: Date.now(),
+      })
     }
     navigate(`/room/${code}?host=1`)
   }

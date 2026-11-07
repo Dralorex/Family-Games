@@ -5,6 +5,8 @@ import { CodeDropdown } from '../components/CodeDropdown'
 import { TabShell } from '../components/TabShell'
 import { UsernameGate } from '../components/UsernameGate'
 import { useRoom } from '../hooks/useRoom'
+import { useTrackActiveSession } from '../hooks/useTrackActiveSession'
+import { clearActiveSession } from '../lib/activeSession'
 import { createPlayerId, createSessionId } from '../lib/codes'
 import type { HotPotatoRoom, RoomState } from '../rooms/types'
 import { ScorecardRoomView } from './ScorecardRoomView'
@@ -43,6 +45,12 @@ export function RoomPage() {
     initialState: seed,
     enabled: true,
   })
+
+  useTrackActiveSession({ room, name })
+
+  useEffect(() => {
+    if (room?.status === 'closed') clearActiveSession()
+  }, [room?.status])
 
   const rosterNames = room ? Object.values(room.players).map((p) => p.name) : []
   const joinKeyRef = useRef('')
@@ -148,6 +156,7 @@ export function RoomPage() {
             className="btn primary"
             onClick={() => {
               sessionStorage.removeItem(`fg_name_${code}`)
+              clearActiveSession()
               navigate('/')
             }}
           >
@@ -212,7 +221,7 @@ export function RoomPage() {
         <div className="panel">
           <h1>Game closed</h1>
           <p className="muted">This room has ended. Resume it from Saved games if it was saved.</p>
-          <Link className="btn primary" to="/">
+          <Link className="btn primary" to="/" onClick={() => clearActiveSession()}>
             Home
           </Link>
         </div>
@@ -237,6 +246,7 @@ export function RoomPage() {
       room={room}
       playerId={playerId}
       sessionId={sessionId}
+      name={name}
       tab={tab}
       onTab={setTab}
       send={send}

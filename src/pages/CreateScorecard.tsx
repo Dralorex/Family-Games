@@ -5,8 +5,10 @@ import { getTemplate } from '../core/score/templates'
 import type { ScorecardTemplateId } from '../core/score/types'
 import { createPlayerId, createSessionId, generateCode } from '../lib/codes'
 import { getActiveParty, setActiveParty } from '../lib/party'
+import { setActiveSession } from '../lib/activeSession'
 import { createScorecardRoom } from '../rooms/factory'
 import { claimFromRoom, publishOwnerClaim } from '../rooms/ownerIndex'
+import { publishPartyInvite } from '../rooms/partyBus'
 
 export function CreateScorecard() {
   const { templateId = '' } = useParams()
@@ -59,13 +61,35 @@ export function CreateScorecard() {
 
     if (party) {
       setActiveParty({ partyId: party.partyId, hostId: host.id, code })
+      const path = `/room/${code}`
+      // Same-browser tabs
       try {
         const ch = new BroadcastChannel(`fg-party-${party.partyId}`)
-        ch.postMessage({ type: 'pull', path: `/room/${code}` })
+        ch.postMessage({ type: 'pull', path, prompt: 'join' })
         ch.close()
       } catch {
         // ignore
       }
+      // Phones that swiped away / other browsers → Join Game?
+      void publishPartyInvite({
+        v: 1,
+        partyId: party.partyId,
+        code,
+        path,
+        prompt: 'join',
+        title: room.title,
+        updatedAt: Date.now(),
+      }).catch(() => {})
+      setActiveSession({
+        code,
+        name,
+        title: room.title,
+        kind: 'scorecard',
+        partyId: party.partyId,
+        prompt: 'join',
+        path,
+        updatedAt: Date.now(),
+      })
     }
 
     navigate(`/room/${code}?host=1`)

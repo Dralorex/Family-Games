@@ -18,8 +18,11 @@ import {
   shouldShowPlace,
   topThree,
 } from '../core/score/engine'
+import { clearActiveSession, setActiveSession } from '../lib/activeSession'
 import { setActiveParty } from '../lib/party'
 import { saveGame } from '../lib/savedGames'
+import { useTrackActiveSession } from '../hooks/useTrackActiveSession'
+import { clearPartyInvite } from '../rooms/partyBus'
 import type { useRoom } from '../hooks/useRoom'
 import type { EndVote, ScorecardRoom } from '../rooms/types'
 
@@ -29,6 +32,7 @@ export function ScorecardRoomView(props: {
   room: ScorecardRoom
   playerId: string
   sessionId: string
+  name: string
   tab: 'main' | 'score'
   onTab: (t: 'main' | 'score') => void
   send: ReturnType<typeof useRoom>['send']
@@ -37,6 +41,7 @@ export function ScorecardRoomView(props: {
   const navigate = useNavigate()
   const isHost = room.hostId === playerId
   const me = room.players[playerId]
+  useTrackActiveSession({ room, name: props.name })
   const players = Object.values(room.players).sort((a, b) => a.joinedAt - b.joinedAt)
   const active = players.filter((p) => !p.left)
   const [showHostLeave, setShowHostLeave] = useState(false)
@@ -91,15 +96,36 @@ export function ScorecardRoomView(props: {
   useEffect(() => {
     if (room.regrouping) {
       setActiveParty({ partyId: room.partyId, hostId: room.hostId, code: room.code })
+      // Next game from the host should prompt “Join Game?” not Continue
+      setActiveSession({
+        code: '',
+        name: props.name,
+        title: room.title,
+        kind: 'scorecard',
+        partyId: room.partyId,
+        prompt: 'join',
+        path: '/',
+        updatedAt: Date.now(),
+      })
       navigate('/')
     }
-  }, [room.regrouping, room.partyId, room.hostId, room.code, navigate])
+  }, [room.regrouping, room.partyId, room.hostId, room.code, room.title, navigate, props.name])
 
   useEffect(() => {
     if (room.pullTo) {
+      setActiveSession({
+        code: room.pullTo.code,
+        name: props.name,
+        title: room.title,
+        kind: 'scorecard',
+        partyId: room.partyId,
+        prompt: 'join',
+        path: room.pullTo.path,
+        updatedAt: Date.now(),
+      })
       navigate(room.pullTo.path)
     }
-  }, [room.pullTo, navigate])
+  }, [room.pullTo, room.partyId, room.title, navigate, props.name])
 
   const submitScore = () => {
     if (!entryTarget) return
@@ -142,12 +168,23 @@ export function ScorecardRoomView(props: {
 
   const leave = (newHostId?: string) => {
     void saveGame(room)
+    clearActiveSession()
     send({
       type: 'leave',
       playerId,
       ...(newHostId ? { newHostId } : {}),
     })
     navigate('/')
+  }
+
+  const closeLobby = () => {
+    void saveGame(room).finally(() => {
+      send({ type: 'close-room', fromId: playerId })
+      clearActiveSession()
+      setActiveParty(null)
+      void clearPartyInvite(room.partyId).catch(() => {})
+      navigate('/')
+    })
   }
 
   const requestLeave = () => {
@@ -461,6 +498,7 @@ export function ScorecardRoomView(props: {
               setActiveParty({ partyId: room.partyId, hostId: room.hostId, code: room.code })
               send({ type: 'host-new-game', fromId: playerId })
             }}
+            onCloseLobby={closeLobby}
           />
         </>
       ) : null}
