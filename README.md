@@ -13,7 +13,7 @@ Phone-friendly family games and shared scorecards. Join with a short code — no
 
 ### Games
 - **Hot Potato** — host sets a min–max fuse range; it ends randomly in that window; every phone plays a synced alarm; holder taps Explode; placement board for up to 50 players  
-- **Neighborhood** — property-trading on phones (Slice A: create rules, seats, pieces, teams; board play in later slices)  
+- **Neighborhood** — property-trading on phones (lobby rules/seats + playable board: dice, buy/rent, jail, wallets; deeper economy in later slices)  
 
 ### Scorecards
 | Game | Win | Ends |

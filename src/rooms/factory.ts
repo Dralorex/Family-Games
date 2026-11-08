@@ -56,6 +56,7 @@ export function createNeighborhoodRoom(opts: {
     pieces: {},
     teamOf: {},
     boardReady: false,
+    game: null,
     pendingHostReturn: null,
   }
 }

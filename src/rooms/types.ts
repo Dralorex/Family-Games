@@ -1,3 +1,4 @@
+import type { NeighborhoodGame } from '../core/neighborhood/gameTypes'
 import type {
   NeighborhoodPieceId,
   NeighborhoodRules,
@@ -66,8 +67,8 @@ export interface ScorecardRoom extends RoomBase {
 }
 
 /**
- * Neighborhood lobby + shell (Slice A).
- * Board / economy / turns land in later slices; rules + seating lock here.
+ * Neighborhood under Games.
+ * Slice A: lobby/rules. Slice B: board, dice, buy/rent, jail, wallets.
  */
 export interface NeighborhoodRoom extends RoomBase {
   kind: 'neighborhood'
@@ -81,8 +82,10 @@ export interface NeighborhoodRoom extends RoomBase {
    * playerId → team key
    */
   teamOf: Record<string, string>
-  /** Slice B+: board state placeholder so peers share one shape early */
+  /** True once opening rolls / play state exists */
   boardReady: boolean
+  /** Live board — set when the host starts */
+  game: NeighborhoodGame | null
 }
 
 export type RoomState = HotPotatoRoom | ScorecardRoom | NeighborhoodRoom
@@ -122,3 +125,14 @@ export type RoomAction =
     }
   | { type: 'set-neighborhood-team'; fromId: string; teamId: string }
   | { type: 'start-neighborhood'; fromId: string }
+  | { type: 'nb-opening-roll'; fromId: string }
+  | { type: 'nb-roll'; fromId: string }
+  | { type: 'nb-buy'; fromId: string }
+  | { type: 'nb-decline-buy'; fromId: string }
+  | { type: 'nb-tax'; fromId: string; choice: 'flat' | 'percent' }
+  | { type: 'nb-ack-card'; fromId: string }
+  | { type: 'nb-jail'; fromId: string; choice: 'pay' | 'card' | 'roll' }
+  | { type: 'nb-auction-raise'; fromId: string }
+  | { type: 'nb-auction-pass'; fromId: string }
+  | { type: 'nb-debt-bankrupt'; fromId: string }
+  | { type: 'nb-end-turn'; fromId: string }

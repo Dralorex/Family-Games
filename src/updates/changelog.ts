@@ -26,12 +26,15 @@ export const UPDATES: UpdateNotes[] = [
   {
     version: '0.0.14',
     pr: 14,
-    title: 'Neighborhood lobby shell (Slice A)',
+    title: 'Neighborhood lobby + playable core',
     added: [
       'Neighborhood under Games — create room with locked house rules',
       'Lobby seating: original pieces, Solo / Shared tray / Alliance styles',
       'Disconnect grace minutes tunable at create (default 5)',
       'Owner-away countdown banner using existing claim-host handoff',
+      'Host crypto dice, 40-space board, buy/auction, rent, Home, jail, cards',
+      'Shared trays (first legal tap) and alliance rent skips on the live board',
+      'Digit wallets, public positions/owners, and a short event log',
     ],
     updated: [
       'Games hub lists Neighborhood beside Hot Potato',

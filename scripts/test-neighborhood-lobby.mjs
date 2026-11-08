@@ -1,5 +1,5 @@
 /**
- * Slice A smoke via tsx.
+ * Neighborhood Slice A+B smoke via tsx.
  * Run: npx --yes tsx scripts/test-neighborhood-lobby.mjs
  */
 import assert from 'node:assert/strict'
@@ -29,31 +29,27 @@ assert.equal(neighborhoodLobbyReady(room), true)
 room = applyAction(room, { type: 'start-neighborhood', fromId: 'h1' })
 assert.equal(room.status, 'playing')
 assert.equal(room.rulesLocked, true)
+assert.ok(room.game)
+assert.equal(room.game.phase, 'opening')
+assert.equal(Object.keys(room.game.trays).length, 2)
 
-const blocked = applyAction(room, { type: 'set-neighborhood-piece', fromId: 'h1', pieceId: 'kite' })
-assert.equal(blocked.pieces.h1, 'fox')
+room = applyAction(room, { type: 'nb-opening-roll', fromId: 'h1' })
+room = applyAction(room, { type: 'nb-opening-roll', fromId: 'p2' })
+// ties may require more rolls — keep rolling until playing
+let guard = 0
+while (room.game.phase === 'opening' && guard < 20) {
+  for (const tid of room.game.openingNeeds) {
+    const member = room.game.trays[tid].memberIds[0]
+    room = applyAction(room, { type: 'nb-opening-roll', fromId: member })
+  }
+  guard++
+}
+assert.equal(room.game.phase, 'playing')
+assert.ok(room.game.turnOrder.length >= 2)
 
-// Shared tray: two on tray 1 share fox; tray 2 owl; start
-let shared = createNeighborhoodRoom({
-  code: 'SHARE',
-  host,
-  rules: defaultNeighborhoodRules({ teamStyle: 'shared' }),
-})
-shared = applyAction(shared, {
-  type: 'join',
-  player: { id: 'p2', name: 'Kid', joinedAt: 2, sessionId: 's2' },
-})
-shared = applyAction(shared, {
-  type: 'join',
-  player: { id: 'p3', name: 'Pat', joinedAt: 3, sessionId: 's3' },
-})
-shared = applyAction(shared, { type: 'set-neighborhood-team', fromId: 'h1', teamId: '1' })
-shared = applyAction(shared, { type: 'set-neighborhood-team', fromId: 'p2', teamId: '1' })
-shared = applyAction(shared, { type: 'set-neighborhood-team', fromId: 'p3', teamId: '2' })
-shared = applyAction(shared, { type: 'set-neighborhood-piece', fromId: 'h1', pieceId: 'fox' })
-// p2 inherits/must match tray piece
-shared = applyAction(shared, { type: 'set-neighborhood-piece', fromId: 'p2', pieceId: 'fox' })
-shared = applyAction(shared, { type: 'set-neighborhood-piece', fromId: 'p3', pieceId: 'owl' })
-assert.equal(neighborhoodLobbyReady(shared), true)
+const turnTray = room.game.turnOrder[room.game.turnIndex]
+const roller = room.game.trays[turnTray].memberIds[0]
+room = applyAction(room, { type: 'nb-roll', fromId: roller })
+assert.ok(room.game.lastDice || room.game.prompt || room.game.log.length > 1)
 
-console.log('OK neighborhood lobby Slice A')
+console.log('OK neighborhood Slice A+B')

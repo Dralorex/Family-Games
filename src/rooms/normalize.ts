@@ -22,6 +22,22 @@ export function normalizeRoom(room: RoomState): RoomState {
   const players = Object.fromEntries(
     Object.entries(room.players).map(([id, p]) => [id, { ...p, left: p.left ?? false }]),
   )
+  if (room.kind === 'neighborhood') {
+    return {
+      ...room,
+      title,
+      partyId,
+      creatorName,
+      players,
+      pendingHostReturn: room.pendingHostReturn ?? null,
+      game: room.game ?? null,
+      boardReady: room.boardReady ?? Boolean(room.game),
+      pieces: room.pieces ?? {},
+      teamOf: room.teamOf ?? {},
+      rulesLocked: room.rulesLocked ?? false,
+    }
+  }
+
   return {
     ...room,
     title,

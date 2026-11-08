@@ -1177,3 +1177,94 @@ button {
 .neighborhood-placeholder {
   margin-top: 0.5rem;
 }
+
+/* Neighborhood play */
+.nb-play {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.nb-dice {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.nb-board {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 42vh;
+  overflow: auto;
+  padding: 0.25rem 0;
+}
+
+.nb-space {
+  display: grid;
+  grid-template-columns: 2rem 1fr;
+  grid-template-rows: auto auto;
+  gap: 0.1rem 0.45rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface, #fff) 88%, var(--teal, #2a7) 12%);
+  font-size: 0.82rem;
+}
+
+.nb-space.occupied {
+  outline: 2px solid var(--accent, #c45);
+}
+
+.nb-space-idx {
+  grid-row: 1 / span 2;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.nb-space-name {
+  font-weight: 600;
+}
+
+.nb-space-owner,
+.nb-tokens {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.nb-wallet {
+  text-align: center;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #c45) 12%, transparent);
+}
+
+.nb-wallet-amount {
+  margin: 0;
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-log {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.nb-card {
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--teal, #2a7) 14%, transparent);
+}
+
+.nb-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.btn.large {
+  padding: 0.85rem 1.1rem;
+  font-size: 1.05rem;
+}

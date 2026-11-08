@@ -17,6 +17,7 @@ import { clearActiveSession } from '../lib/activeSession'
 import { HOST_AWAY_MS, neighborhoodLobbyReady } from '../rooms/reducer'
 import type { NeighborhoodRoom } from '../rooms/types'
 import { useRoom } from '../hooks/useRoom'
+import { NeighborhoodPlayPanel, NeighborhoodScorePanel } from './NeighborhoodPlayPanel'
 
 function formatGrace(ms: number) {
   const m = Math.round(ms / 60000)
@@ -242,31 +243,8 @@ export function NeighborhoodRoomView(props: {
         </>
       ) : null}
 
-      {room.status === 'playing' ? (
-        <div className="neighborhood-placeholder">
-          <h2>Rules locked — board next</h2>
-          <p className="muted">
-            Slice A shell is live: seating, pieces, teams, and sync. Dice, board, and money arrive in
-            the next slice.
-          </p>
-          <ul className="player-list">
-            {active.map((p) => (
-              <li key={p.id}>
-                {p.name}
-                {p.id === room.hostId ? ' · owner' : ''}
-                {room.pieces[p.id] ? ` · ${PIECE_LABELS[room.pieces[p.id]!]}` : ''}
-                {room.teamOf[p.id] ? ` · ${teamLabel(room, room.teamOf[p.id]!)}` : ''}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {room.status === 'finished' ? (
-        <div className="panel">
-          <h2>Game over</h2>
-          <p className="muted">End-game flow arrives with later slices.</p>
-        </div>
+      {room.status === 'playing' || room.status === 'finished' ? (
+        <NeighborhoodPlayPanel room={room} playerId={playerId} send={send} />
       ) : null}
     </div>
   )
@@ -274,15 +252,7 @@ export function NeighborhoodRoomView(props: {
   const score = (
     <div className="panel">
       <h2>Table</h2>
-      <p className="muted">Wallets and deeds will show here once the board ships.</p>
-      <ul className="player-list">
-        {active.map((p) => (
-          <li key={p.id}>
-            {p.name}
-            {room.pieces[p.id] ? ` · ${PIECE_LABELS[room.pieces[p.id]!]}` : ''}
-          </li>
-        ))}
-      </ul>
+      <NeighborhoodScorePanel room={room} />
     </div>
   )
 

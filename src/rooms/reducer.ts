@@ -1,4 +1,10 @@
 import {
+  applyNeighborhoodGameAction,
+  initNeighborhoodGame,
+  trayIdForPlayer,
+} from '../core/neighborhood/engine'
+import type { SeatInput } from '../core/neighborhood/engine'
+import {
   allianceGroupIds,
   allianceGroupSize,
   maxPhonesForRules,
@@ -801,12 +807,75 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
       if (room.kind !== 'neighborhood' || action.fromId !== room.hostId) return room
       if (room.status !== 'lobby' || room.rulesLocked) return room
       if (!neighborhoodLobbyReady(room)) return room
+      const seats: SeatInput[] = activeList(room).map((p) => ({
+        playerId: p.id,
+        pieceId: room.pieces[p.id]!,
+        teamId: room.teamOf[p.id],
+      }))
+      const game = initNeighborhoodGame(seats, room.rules)
       return {
         ...room,
         status: 'playing',
         rulesLocked: true,
-        boardReady: false,
+        boardReady: true,
+        game,
         hostAwayAt: null,
+      }
+    }
+
+    case 'nb-opening-roll':
+    case 'nb-roll':
+    case 'nb-buy':
+    case 'nb-decline-buy':
+    case 'nb-tax':
+    case 'nb-ack-card':
+    case 'nb-jail':
+    case 'nb-auction-raise':
+    case 'nb-auction-pass':
+    case 'nb-debt-bankrupt':
+    case 'nb-end-turn': {
+      if (room.kind !== 'neighborhood' || !room.game) return room
+      const trayId = trayIdForPlayer(room.rules, action.fromId, room.teamOf)
+      const names = Object.fromEntries(
+        Object.values(room.players).map((p) => [p.id, p.name]),
+      )
+      const mapAction = (): Parameters<typeof applyNeighborhoodGameAction>[3] | null => {
+        switch (action.type) {
+          case 'nb-opening-roll':
+            return { type: 'opening-roll', fromId: action.fromId, trayId }
+          case 'nb-roll':
+            return { type: 'roll', fromId: action.fromId, trayId }
+          case 'nb-buy':
+            return { type: 'buy', fromId: action.fromId, trayId }
+          case 'nb-decline-buy':
+            return { type: 'decline-buy', fromId: action.fromId, trayId }
+          case 'nb-tax':
+            return { type: 'tax', fromId: action.fromId, trayId, choice: action.choice }
+          case 'nb-ack-card':
+            return { type: 'ack-card', fromId: action.fromId, trayId }
+          case 'nb-jail':
+            return { type: 'jail', fromId: action.fromId, trayId, choice: action.choice }
+          case 'nb-auction-raise':
+            return { type: 'auction-raise', fromId: action.fromId, trayId }
+          case 'nb-auction-pass':
+            return { type: 'auction-pass', fromId: action.fromId, trayId }
+          case 'nb-debt-bankrupt':
+            return { type: 'debt-bankrupt', fromId: action.fromId, trayId }
+          case 'nb-end-turn':
+            return { type: 'end-turn', fromId: action.fromId, trayId }
+          default:
+            return null
+        }
+      }
+      const ga = mapAction()
+      if (!ga) return room
+      const game = applyNeighborhoodGameAction(room.game, room.rules, names, ga)
+      const status = game.phase === 'finished' ? 'finished' : room.status
+      return {
+        ...room,
+        game,
+        status,
+        finishedAt: game.phase === 'finished' ? now : room.finishedAt,
       }
     }
 
