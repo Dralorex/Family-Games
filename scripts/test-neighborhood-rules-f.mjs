@@ -133,7 +133,7 @@ function blankGame(overrides = {}) {
   const deeds = {
     1: { ownerTrayId: 'a', houses: 0, hotel: false, mortgaged: false },
     3: { ownerTrayId: 'a', houses: 0, hotel: false, mortgaged: false },
-    5: { ownerTrayId: 'a', houses: 0, hotel: false, mortgaged: false }, // North Line 200k
+    5: { ownerTrayId: 'a', houses: 0, hotel: false, mortgaged: false }, // South Line 200k
     6: { ownerTrayId: 'a', houses: 0, hotel: false, mortgaged: false },
     8: { ownerTrayId: 'a', houses: 0, hotel: false, mortgaged: false },
     9: { ownerTrayId: 'a', houses: 0, hotel: false, mortgaged: false },
