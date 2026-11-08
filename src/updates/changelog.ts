@@ -24,6 +24,37 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.14',
+    pr: 14,
+    title: 'Neighborhood full multiplayer game',
+    added: [
+      'Neighborhood under Games — create room with locked house rules',
+      'Lobby seating: original pieces, Solo / Shared tray / Alliance styles',
+      'Disconnect grace minutes tunable at create (default 5)',
+      'Owner-away countdown banner using existing claim-host handoff',
+      'Host crypto dice, 40-space board, buy/auction, rent, Home, jail, cards',
+      'Shared trays (first legal tap) and alliance rent skips on the live board',
+      'Digit wallets, public positions/owners, and a short event log',
+      'Build/sell evenly, mortgage/unmortgage, trades, and a debt cover screen',
+      'Leave with gift → spectate; disconnect grace countdown + owner Remove',
+      'Late join: open during first round, then owner Accept/Decline (cash only)',
+      'Per-client animation queue (dice, steps, bills, cards) with seat cameras',
+      'Matching Web Audio cues; Settings mute; refresh skips movies',
+      '2D square board with color spaces and original SVG piece tokens',
+      'Town Square jackpot costume bill face + climbing digit total',
+      'Starting deeds deal (0/1/2) at printed price with unaffordable redraw',
+      'Closest-cover leave settlement before gift; bank/jackpot debt is cash-only',
+      'Hotel sell-back respects bank houses; straight-to-hotel when houses are gone',
+      'Create option: Last Alive (default) or First Bankruptcy (equity winners)',
+      'Spectating label; jail-free in trades; frozen trade reserves; pay-each movies',
+      'Piece steps one space at a time after the dice tumble',
+    ],
+    updated: [
+      'Games hub lists Neighborhood beside Hot Potato',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.13',
     pr: 13,
     title: 'Live round sync for everyone',

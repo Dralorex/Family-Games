@@ -6,7 +6,7 @@ export interface ActiveSession {
   code: string
   name: string
   title: string
-  kind: 'hot-potato' | 'scorecard'
+  kind: 'hot-potato' | 'scorecard' | 'neighborhood'
   partyId: string
   prompt: ResumePrompt
   /** Route to open, e.g. /room/ABCDE */

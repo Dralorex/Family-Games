@@ -1,3 +1,8 @@
+import type { NeighborhoodGame } from '../core/neighborhood/gameTypes'
+import type {
+  NeighborhoodPieceId,
+  NeighborhoodRules,
+} from '../core/neighborhood/types'
 import type { EndMode, ScoreMap, ScorecardTemplateId, WinDirection } from '../core/score/types'
 import type { TimerState } from '../core/timer/types'
 
@@ -63,7 +68,29 @@ export interface ScorecardRoom extends RoomBase {
   pointLimit?: number
 }
 
-export type RoomState = HotPotatoRoom | ScorecardRoom
+/**
+ * Neighborhood under Games.
+ * Slice A: lobby/rules. Slice B: board, dice, buy/rent, jail, wallets.
+ */
+export interface NeighborhoodRoom extends RoomBase {
+  kind: 'neighborhood'
+  rules: NeighborhoodRules
+  /** Locked when the host starts — never change mid-room */
+  rulesLocked: boolean
+  /** playerId → chosen piece (unique across trays / solo seats) */
+  pieces: Record<string, NeighborhoodPieceId>
+  /**
+   * Shared: tray id "1"…"8". Alliance: group "A"…. Off: omitted / unused.
+   * playerId → team key
+   */
+  teamOf: Record<string, string>
+  /** True once opening rolls / play state exists */
+  boardReady: boolean
+  /** Live board — set when the host starts */
+  game: NeighborhoodGame | null
+}
+
+export type RoomState = HotPotatoRoom | ScorecardRoom | NeighborhoodRoom
 
 export type RoomAction =
   | { type: 'hello'; fromId: string }
@@ -93,3 +120,61 @@ export type RoomAction =
   | { type: 'claim-host'; fromId: string }
   /** Same Players: back to lobby, drop inactive seats, keep active names */
   | { type: 'restart-same-players'; fromId: string }
+  | {
+      type: 'set-neighborhood-piece'
+      fromId: string
+      pieceId: NeighborhoodPieceId
+    }
+  | { type: 'set-neighborhood-team'; fromId: string; teamId: string }
+  | { type: 'start-neighborhood'; fromId: string }
+  | { type: 'nb-opening-roll'; fromId: string }
+  | { type: 'nb-roll'; fromId: string }
+  | { type: 'nb-buy'; fromId: string }
+  | { type: 'nb-decline-buy'; fromId: string }
+  | { type: 'nb-tax'; fromId: string; choice: 'flat' | 'percent' }
+  | { type: 'nb-ack-card'; fromId: string }
+  | { type: 'nb-jail'; fromId: string; choice: 'pay' | 'card' | 'roll' }
+  | { type: 'nb-auction-raise'; fromId: string }
+  | { type: 'nb-auction-pass'; fromId: string }
+  | { type: 'nb-debt-bankrupt'; fromId: string }
+  | { type: 'nb-debt-select'; fromId: string; selectedDeeds: number[]; cashOffer: number }
+  | { type: 'nb-debt-pay'; fromId: string }
+  | { type: 'nb-end-turn'; fromId: string }
+  | { type: 'nb-build'; fromId: string; spaceIndex: number }
+  | { type: 'nb-sell-building'; fromId: string; spaceIndex: number }
+  | { type: 'nb-mortgage'; fromId: string; spaceIndex: number }
+  | { type: 'nb-unmortgage'; fromId: string; spaceIndex: number }
+  | { type: 'nb-trade-open'; fromId: string; toTrayId: string }
+  | {
+      type: 'nb-trade-draft'
+      fromId: string
+      offerCash: number
+      offerDeeds: number[]
+      offerJailFreeWild: number
+      offerJailFreeNeighbor: number
+      askCash: number
+      askDeeds: number[]
+      askJailFreeWild: number
+      askJailFreeNeighbor: number
+    }
+  | { type: 'nb-trade-send'; fromId: string }
+  | { type: 'nb-trade-accept'; fromId: string }
+  | { type: 'nb-trade-decline'; fromId: string }
+  | { type: 'nb-trade-counter'; fromId: string }
+  | {
+      type: 'nb-leave-game'
+      fromId: string
+      giftTo: string | 'bank'
+      spectate: boolean
+    }
+  | { type: 'nb-player-away'; fromId: string; at: number }
+  | { type: 'nb-player-back'; fromId: string }
+  | { type: 'nb-remove-player'; fromId: string; targetPlayerId: string }
+  | {
+      type: 'nb-accept-join'
+      fromId: string
+      playerId: string
+      pieceId: NeighborhoodPieceId
+      teamId?: string
+    }
+  | { type: 'nb-decline-join'; fromId: string; playerId: string }

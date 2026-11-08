@@ -11,6 +11,7 @@ import { useTrackActiveSession } from '../hooks/useTrackActiveSession'
 import { clearActiveSession } from '../lib/activeSession'
 import { createPlayerId, createSessionId } from '../lib/codes'
 import type { HotPotatoRoom, RoomState } from '../rooms/types'
+import { NeighborhoodRoomView } from './NeighborhoodRoomView'
 import { ScorecardRoomView } from './ScorecardRoomView'
 
 function loadSeed(code: string): RoomState | undefined {
@@ -236,6 +237,18 @@ export function RoomPage() {
   if (room.kind === 'hot-potato') {
     return (
       <HotPotatoView
+        room={room}
+        playerId={playerId}
+        tab={tab}
+        onTab={setTab}
+        send={send}
+      />
+    )
+  }
+
+  if (room.kind === 'neighborhood') {
+    return (
+      <NeighborhoodRoomView
         room={room}
         playerId={playerId}
         tab={tab}

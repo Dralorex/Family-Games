@@ -1,7 +1,11 @@
+import {
+  defaultNeighborhoodRules,
+  type NeighborhoodRules,
+} from '../core/neighborhood/types'
 import { getTemplate } from '../core/score/templates'
 import type { ScorecardTemplateId } from '../core/score/types'
 import { defaultRangeTimer } from '../core/timer/types'
-import type { HotPotatoRoom, RoomPlayer, ScorecardRoom } from './types'
+import type { HotPotatoRoom, NeighborhoodRoom, RoomPlayer, ScorecardRoom } from './types'
 
 export function createHotPotatoRoom(opts: {
   code: string
@@ -25,6 +29,34 @@ export function createHotPotatoRoom(opts: {
     timer: defaultRangeTimer(opts.minSec, opts.maxSec),
     aliveIds: [opts.host.id],
     placements: [],
+    pendingHostReturn: null,
+  }
+}
+
+export function createNeighborhoodRoom(opts: {
+  code: string
+  host: RoomPlayer
+  rules: NeighborhoodRules
+  title?: string
+  partyId?: string
+}): NeighborhoodRoom {
+  return {
+    v: 1,
+    kind: 'neighborhood',
+    code: opts.code,
+    title: opts.title?.trim() || 'Neighborhood',
+    hostId: opts.host.id,
+    creatorName: opts.host.name,
+    partyId: opts.partyId || opts.code,
+    createdAt: Date.now(),
+    players: { [opts.host.id]: { ...opts.host, left: false } },
+    status: 'lobby',
+    rules: defaultNeighborhoodRules(opts.rules),
+    rulesLocked: false,
+    pieces: {},
+    teamOf: {},
+    boardReady: false,
+    game: null,
     pendingHostReturn: null,
   }
 }

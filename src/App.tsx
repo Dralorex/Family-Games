@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { CreateHotPotato } from './pages/CreateHotPotato'
+import { CreateNeighborhood } from './pages/CreateNeighborhood'
 import { CreateScorecard } from './pages/CreateScorecard'
 import { GamesHub } from './pages/GamesHub'
 import { Home } from './pages/Home'
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/host" element={<HostContinue />} />
         <Route path="/games" element={<GamesHub />} />
         <Route path="/games/hot-potato/create" element={<CreateHotPotato />} />
+        <Route path="/games/neighborhood/create" element={<CreateNeighborhood />} />
         <Route path="/scorecards" element={<ScorecardsHub />} />
         <Route path="/scorecards/:templateId/create" element={<CreateScorecard />} />
         <Route path="/join/:code" element={<JoinRoom />} />

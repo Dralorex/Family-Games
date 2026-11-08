@@ -21,7 +21,7 @@ export function GamesHub() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    setSaved(listSavedGames().filter((g) => g.kind === 'hot-potato'))
+    setSaved(listSavedGames().filter((g) => g.kind === 'hot-potato' || g.kind === 'neighborhood'))
   }, [])
 
   const resume = async () => {
@@ -72,6 +72,15 @@ export function GamesHub() {
           <div>
             <h2>Hot Potato</h2>
             <p>Synced surprise timer, alarm on every phone, last one standing wins.</p>
+          </div>
+          <span className="chevron" aria-hidden>
+            →
+          </span>
+        </Link>
+        <Link className="game-card" to="/games/neighborhood/create">
+          <div>
+            <h2>Neighborhood</h2>
+            <p>Property trading on phones — seats, pieces, and house rules in the lobby.</p>
           </div>
           <span className="chevron" aria-hidden>
             →

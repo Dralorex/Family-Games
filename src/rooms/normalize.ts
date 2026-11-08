@@ -1,3 +1,4 @@
+import { defaultNeighborhoodRules } from '../core/neighborhood/types'
 import type { RoomState } from './types'
 
 /** Backfill fields added after v1 launch. */
@@ -7,7 +8,9 @@ export function normalizeRoom(room: RoomState): RoomState {
       ? room.title
       : room.kind === 'scorecard'
         ? room.templateName
-        : 'Hot Potato'
+        : room.kind === 'neighborhood'
+          ? 'Neighborhood'
+          : 'Hot Potato'
   const partyId =
     'partyId' in room && typeof room.partyId === 'string' && room.partyId
       ? room.partyId
@@ -20,6 +23,31 @@ export function normalizeRoom(room: RoomState): RoomState {
   const players = Object.fromEntries(
     Object.entries(room.players).map(([id, p]) => [id, { ...p, left: p.left ?? false }]),
   )
+  if (room.kind === 'neighborhood') {
+    return {
+      ...room,
+      title,
+      partyId,
+      creatorName,
+      players,
+      pendingHostReturn: room.pendingHostReturn ?? null,
+      rules: defaultNeighborhoodRules(room.rules),
+      game: room.game
+        ? {
+            ...room.game,
+            cinematics: room.game.cinematics ?? [],
+            turnsTaken: room.game.turnsTaken ?? 0,
+            awayAt: room.game.awayAt ?? {},
+            joinRequests: room.game.joinRequests ?? [],
+          }
+        : null,
+      boardReady: room.boardReady ?? Boolean(room.game),
+      pieces: room.pieces ?? {},
+      teamOf: room.teamOf ?? {},
+      rulesLocked: room.rulesLocked ?? false,
+    }
+  }
+
   return {
     ...room,
     title,

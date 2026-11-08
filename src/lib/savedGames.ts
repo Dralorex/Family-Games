@@ -46,7 +46,12 @@ export async function saveGame(room: RoomState, title?: string): Promise<SavedGa
     title: (title || ('title' in room ? room.title : '') || room.code).trim() || room.code,
     code: room.code,
     kind: room.kind,
-    templateName: room.kind === 'scorecard' ? room.templateName : 'Hot Potato',
+    templateName:
+      room.kind === 'scorecard'
+        ? room.templateName
+        : room.kind === 'neighborhood'
+          ? 'Neighborhood'
+          : 'Hot Potato',
     pausedAt: Date.now(),
     createdAt: existing?.createdAt ?? room.createdAt,
     playerNames: Object.values(room.players).map((p) => p.name),
