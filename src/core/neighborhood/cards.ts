@@ -11,7 +11,7 @@ export const WILD_TEXTS: string[] = [
   'Go to jail. Do not pass Home. Do not collect $200,000.',
   'After the storm, pay $25,000 for each house and $100,000 for each hotel you own.',
   'A small fine. Pay $15,000.',
-  'Ride the North Line. If you pass Home, collect $200,000.',
+  'Ride the South Line. If you pass Home, collect $200,000.',
   'Grand Castle wants you now. If you pass Home, collect $200,000.',
   'Treat the table. Pay every other seat $50,000.',
   'An old loan pays out. Collect $150,000.',

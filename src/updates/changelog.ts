@@ -24,6 +24,17 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.16',
+    pr: 16,
+    title: 'Neighborhood board clockwise layout',
+    added: [],
+    updated: [
+      'Board places Home bottom-right with spaces running clockwise (classic ring order)',
+      'Line names match their edges (South / West / North / East)',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.15',
     pr: 15,
     title: 'Fix MQTT progress scoring after Neighborhood',

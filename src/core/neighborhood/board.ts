@@ -91,7 +91,7 @@ export const BOARD: SpaceDef[] = [
     rents: [4_000, 20_000, 60_000, 180_000, 320_000, 450_000],
   },
   { kind: 'tax', index: 4, name: 'Town Tax' },
-  { kind: 'line', index: 5, name: 'North Line', price: LINE_PRICE, mortgage: LINE_MORT },
+  { kind: 'line', index: 5, name: 'South Line', price: LINE_PRICE, mortgage: LINE_MORT },
   {
     kind: 'property',
     index: 6,
@@ -155,7 +155,7 @@ export const BOARD: SpaceDef[] = [
     mortgage: 80_000,
     rents: [12_000, 60_000, 180_000, 500_000, 700_000, 900_000],
   },
-  { kind: 'line', index: 15, name: 'East Line', price: LINE_PRICE, mortgage: LINE_MORT },
+  { kind: 'line', index: 15, name: 'West Line', price: LINE_PRICE, mortgage: LINE_MORT },
   {
     kind: 'property',
     index: 16,
@@ -219,7 +219,7 @@ export const BOARD: SpaceDef[] = [
     mortgage: 120_000,
     rents: [20_000, 100_000, 300_000, 750_000, 925_000, 1_100_000],
   },
-  { kind: 'line', index: 25, name: 'South Line', price: LINE_PRICE, mortgage: LINE_MORT },
+  { kind: 'line', index: 25, name: 'North Line', price: LINE_PRICE, mortgage: LINE_MORT },
   {
     kind: 'property',
     index: 26,
@@ -283,7 +283,7 @@ export const BOARD: SpaceDef[] = [
     mortgage: 160_000,
     rents: [28_000, 150_000, 450_000, 1_000_000, 1_200_000, 1_400_000],
   },
-  { kind: 'line', index: 35, name: 'West Line', price: LINE_PRICE, mortgage: LINE_MORT },
+  { kind: 'line', index: 35, name: 'East Line', price: LINE_PRICE, mortgage: LINE_MORT },
   { kind: 'wild', index: 36, name: 'Wild Card' },
   {
     kind: 'property',
@@ -321,6 +321,40 @@ export const COLOR_GROUPS: Record<ColorGroup, number[]> = {
 
 export const LINE_INDEXES = [5, 15, 25, 35]
 export const WORKS_INDEXES = [12, 28]
+
+/**
+ * Map board index → CSS grid cell on an 11×11 board.
+ * Home (0) is bottom-right; movement increases clockwise
+ * (left along bottom → up left → right along top → down right).
+ */
+export function cellForIndex(index: number): { col: number; row: number } {
+  const i = ((index % 40) + 40) % 40
+  if (i >= 0 && i <= 10) {
+    // Bottom edge: Home (col 11) … Jail (col 1)
+    return { col: 11 - i, row: 11 }
+  }
+  if (i >= 11 && i <= 20) {
+    // Left edge: above Jail … Town Square (top-left)
+    return { col: 1, row: 11 - (i - 10) }
+  }
+  if (i >= 21 && i <= 30) {
+    // Top edge: right of Town Square … Sent to Jail (top-right)
+    return { col: i - 19, row: 1 }
+  }
+  // Right edge: below Sent to Jail … above Home
+  return { col: 11, row: i - 29 }
+}
+
+/** True when consecutive indexes (wrapping 39→0) sit in neighboring grid cells. */
+export function boardPathIsClockwise(): boolean {
+  for (let i = 0; i < 40; i++) {
+    const a = cellForIndex(i)
+    const b = cellForIndex((i + 1) % 40)
+    const dist = Math.abs(a.col - b.col) + Math.abs(a.row - b.row)
+    if (dist !== 1) return false
+  }
+  return true
+}
 
 export function spaceAt(index: number): SpaceDef {
   return BOARD[((index % 40) + 40) % 40]!

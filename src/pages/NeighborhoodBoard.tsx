@@ -1,18 +1,9 @@
-import { BOARD, spaceAt, type SpaceDef } from '../core/neighborhood/board'
+import { BOARD, cellForIndex, spaceAt, type SpaceDef } from '../core/neighborhood/board'
 import { jackpotFaceLabel } from '../core/neighborhood/jackpotFace'
 import { formatCash } from '../core/neighborhood/money'
 import { PIECE_LABELS, type NeighborhoodPieceId } from '../core/neighborhood/types'
 import type { NeighborhoodGame } from '../core/neighborhood/gameTypes'
 import { NeighborhoodPieceIcon } from './NeighborhoodPieceIcon'
-
-/** Map board index → CSS grid cell (11×11, GO bottom-left, clockwise). */
-function cellForIndex(index: number): { col: number; row: number } {
-  if (index >= 0 && index <= 10) return { col: index + 1, row: 11 }
-  if (index >= 11 && index <= 20) return { col: 11, row: 11 - (index - 10) }
-  if (index >= 21 && index <= 30) return { col: 11 - (index - 20), row: 1 }
-  // 31–39
-  return { col: 1, row: index - 29 }
-}
 
 function groupClass(space: SpaceDef): string {
   if (space.kind === 'property') return `grp-${space.group}`
