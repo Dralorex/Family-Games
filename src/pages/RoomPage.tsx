@@ -58,8 +58,12 @@ export function RoomPage() {
 
   const rosterNames = room ? Object.values(room.players).map((p) => p.name) : []
   const joinKeyRef = useRef('')
+  const rosterCount = room ? Object.keys(room.players).length : 0
+  const seatedHere = Boolean(room?.players[playerId] && !room.players[playerId]?.left)
+  const rosterSync = room?.syncSeq ?? 0
 
-  // Join / take over seat as soon as a name is chosen (once per seat claim, not every roster pulse)
+  // Join / take over seat as soon as a name is chosen.
+  // Retry when roster/sync updates still omit us — joins can be lost on the wire.
   useEffect(() => {
     if (!name || kicked) return
 
@@ -110,14 +114,15 @@ export function RoomPage() {
       (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
     )
     if (existing) {
-      const rejoinKey = `rejoin:${existing.id}:${sessionId}:${reclaimHost}`
+      const rejoinKey = `rejoin:${existing.id}:${sessionId}:${reclaimHost}:${rosterSync}`
       if (joinKeyRef.current === rejoinKey) return
       joinKeyRef.current = rejoinKey
       send({ type: 'rejoin', name, playerId, sessionId, reclaimHost })
       return
     }
 
-    const joinKey = `join:${name}:${sessionId}`
+    // Include sync/roster so a stale room snapshot without us triggers another join
+    const joinKey = `join:${name}:${sessionId}:${rosterSync}:${rosterCount}`
     if (joinKeyRef.current === joinKey) return
     joinKeyRef.current = joinKey
     send({
@@ -126,7 +131,36 @@ export function RoomPage() {
       reclaimHost,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, playerId, sessionId, room?.code, room?.hostId, status, kicked, hostParam])
+  }, [
+    name,
+    playerId,
+    sessionId,
+    room?.code,
+    room?.hostId,
+    status,
+    kicked,
+    hostParam,
+    rosterSync,
+    rosterCount,
+    seatedHere,
+  ])
+
+  // Keep poking join while connected but not seated (covers dropped MQTT actions)
+  useEffect(() => {
+    if (!name || kicked || !room || status === 'connecting') return
+    if (room.players[playerId] && !room.players[playerId]?.left) return
+    const reclaimHost =
+      hostParam || room.creatorName.trim().toLowerCase() === name.trim().toLowerCase()
+    const tick = window.setInterval(() => {
+      send({
+        type: 'join',
+        player: { id: playerId, name, joinedAt: Date.now(), sessionId },
+        reclaimHost,
+      })
+    }, 3000)
+    return () => window.clearInterval(tick)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, kicked, room?.code, playerId, sessionId, status, seatedHere, hostParam])
 
   // Detect kicked by another browser using the same name
   useEffect(() => {
