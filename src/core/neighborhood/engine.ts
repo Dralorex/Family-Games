@@ -126,7 +126,14 @@ function tryDebit(
   return {
     game: {
       ...game,
-      prompt: { type: 'debt', amount, toTrayId: to, reason },
+      prompt: {
+        type: 'debt',
+        amount,
+        toTrayId: to,
+        reason,
+        selectedDeeds: [],
+        cashOffer: 0,
+      },
     },
     paid: false,
   }
@@ -359,6 +366,9 @@ export function initNeighborhoodGame(
     lastEventId: 0,
     log: ['Opening rolls — highest goes first.'],
     winnerTrayIds: [],
+    turnsTaken: 0,
+    awayAt: {},
+    joinRequests: [],
   }
 }
 
@@ -394,10 +404,18 @@ function endTurn(game: NeighborhoodGame): NeighborhoodGame {
         usedJailDoubles: false,
         lastDice: null,
         prompt: null,
+        turnsTaken: (game.turnsTaken ?? 0) + 1,
       }
     }
   }
   return game
+}
+
+/** Open seat claim until opening finishes and every tray has had one turn. */
+export function isOpenJoin(game: NeighborhoodGame): boolean {
+  if (game.phase === 'opening') return true
+  if (game.phase !== 'playing') return false
+  return (game.turnsTaken ?? 0) < Math.max(1, game.turnOrder.length)
 }
 
 function afterRollContinue(
@@ -409,6 +427,14 @@ function afterRollContinue(
     return { ...game, prompt: null, lastDice: null }
   }
   return endTurn(game)
+}
+
+/** After settling a mid-turn prompt (debt), resume doubles or end turn. */
+export function continueAfterResolve(game: NeighborhoodGame): NeighborhoodGame {
+  const doubles = Boolean(
+    game.lastDice && game.lastDice[0] === game.lastDice[1] && !game.usedJailDoubles,
+  )
+  return afterRollContinue({ ...game, prompt: null }, doubles)
 }
 
 function resolveSpace(

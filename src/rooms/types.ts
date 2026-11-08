@@ -135,4 +135,44 @@ export type RoomAction =
   | { type: 'nb-auction-raise'; fromId: string }
   | { type: 'nb-auction-pass'; fromId: string }
   | { type: 'nb-debt-bankrupt'; fromId: string }
+  | { type: 'nb-debt-select'; fromId: string; selectedDeeds: number[]; cashOffer: number }
+  | { type: 'nb-debt-pay'; fromId: string }
   | { type: 'nb-end-turn'; fromId: string }
+  | { type: 'nb-build'; fromId: string; spaceIndex: number }
+  | { type: 'nb-sell-building'; fromId: string; spaceIndex: number }
+  | { type: 'nb-mortgage'; fromId: string; spaceIndex: number }
+  | { type: 'nb-unmortgage'; fromId: string; spaceIndex: number }
+  | { type: 'nb-trade-open'; fromId: string; toTrayId: string }
+  | {
+      type: 'nb-trade-draft'
+      fromId: string
+      offerCash: number
+      offerDeeds: number[]
+      offerJailFreeWild: number
+      offerJailFreeNeighbor: number
+      askCash: number
+      askDeeds: number[]
+      askJailFreeWild: number
+      askJailFreeNeighbor: number
+    }
+  | { type: 'nb-trade-send'; fromId: string }
+  | { type: 'nb-trade-accept'; fromId: string }
+  | { type: 'nb-trade-decline'; fromId: string }
+  | { type: 'nb-trade-counter'; fromId: string }
+  | {
+      type: 'nb-leave-game'
+      fromId: string
+      giftTo: string | 'bank'
+      spectate: boolean
+    }
+  | { type: 'nb-player-away'; fromId: string; at: number }
+  | { type: 'nb-player-back'; fromId: string }
+  | { type: 'nb-remove-player'; fromId: string; targetPlayerId: string }
+  | {
+      type: 'nb-accept-join'
+      fromId: string
+      playerId: string
+      pieceId: NeighborhoodPieceId
+      teamId?: string
+    }
+  | { type: 'nb-decline-join'; fromId: string; playerId: string }

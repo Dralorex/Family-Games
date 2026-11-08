@@ -1,9 +1,11 @@
 import {
   applyNeighborhoodGameAction,
   initNeighborhoodGame,
+  isOpenJoin,
   trayIdForPlayer,
 } from '../core/neighborhood/engine'
 import type { SeatInput } from '../core/neighborhood/engine'
+import { applySliceCAction } from '../core/neighborhood/sliceC'
 import {
   allianceGroupIds,
   allianceGroupSize,
@@ -365,9 +367,40 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
       }
       if (room.kind === 'neighborhood') {
         const activeCount = activeList(room).length
-        // After start, Slice A rejects new seats (late-join accept is Slice C)
-        if (room.rulesLocked || room.status !== 'lobby') return room
-        if (activeCount >= maxPhonesForRules(room.rules)) return room
+        if (room.status === 'lobby' && !room.rulesLocked) {
+          if (activeCount >= maxPhonesForRules(room.rules)) return room
+        } else if (room.game) {
+          // Mid-game join: open seat or queue for owner
+          if (activeCount >= maxPhonesForRules(room.rules)) return room
+          const game = room.game
+          if (isOpenJoin(game)) {
+            // Continue into normal player add, then seat in game below
+          } else {
+            const exists = (game.joinRequests ?? []).some((r) => r.playerId === action.player.id)
+            if (exists) return room
+            return {
+              ...room,
+              game: {
+                ...game,
+                joinRequests: [
+                  ...(game.joinRequests ?? []),
+                  {
+                    playerId: action.player.id,
+                    name: action.player.name,
+                    sessionId: sessionId,
+                    at: now,
+                  },
+                ],
+              },
+              players: {
+                ...room.players,
+                [action.player.id]: { ...action.player, left: false, sessionId },
+              },
+            }
+          }
+        } else {
+          return room
+        }
       }
       let next: RoomState = {
         ...room,
@@ -388,6 +421,34 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
       }
       if (room.kind === 'scorecard' && room.status === 'playing' && room.completedRounds >= 1) {
         next = copyLastPlaceScores(next as ScorecardRoom, action.player.id, room.completedRounds)
+      }
+      if (room.kind === 'neighborhood' && room.game && isOpenJoin(room.game)) {
+        const nb = next as NeighborhoodRoom
+        const used = new Set(Object.values(nb.game!.trays).map((t) => t.pieceId))
+        const pieceId = NEIGHBORHOOD_PIECES.find((p) => !used.has(p))
+        if (!pieceId) return next
+        const names = Object.fromEntries(
+          Object.values(nb.players).map((p) => [p.id, p.name]),
+        )
+        // accept-join expects a joinRequests entry
+        const withReq = {
+          ...nb.game!,
+          joinRequests: [
+            {
+              playerId: action.player.id,
+              name: action.player.name,
+              sessionId,
+              at: now,
+            },
+          ],
+        }
+        const seated = applySliceCAction(withReq, nb.rules, names, nb.hostId, {
+          type: 'accept-join',
+          fromId: nb.hostId,
+          playerId: action.player.id,
+          pieceId,
+        })
+        return { ...nb, game: seated, pieces: { ...nb.pieces, [action.player.id]: pieceId } }
       }
       return next
     }
@@ -870,6 +931,137 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
       const ga = mapAction()
       if (!ga) return room
       const game = applyNeighborhoodGameAction(room.game, room.rules, names, ga)
+      const status = game.phase === 'finished' ? 'finished' : room.status
+      return {
+        ...room,
+        game,
+        status,
+        finishedAt: game.phase === 'finished' ? now : room.finishedAt,
+      }
+    }
+
+    case 'nb-debt-select':
+    case 'nb-debt-pay':
+    case 'nb-build':
+    case 'nb-sell-building':
+    case 'nb-mortgage':
+    case 'nb-unmortgage':
+    case 'nb-trade-open':
+    case 'nb-trade-draft':
+    case 'nb-trade-send':
+    case 'nb-trade-accept':
+    case 'nb-trade-decline':
+    case 'nb-trade-counter':
+    case 'nb-leave-game':
+    case 'nb-player-away':
+    case 'nb-player-back':
+    case 'nb-remove-player':
+    case 'nb-accept-join':
+    case 'nb-decline-join': {
+      if (room.kind !== 'neighborhood' || !room.game) return room
+      const trayId = trayIdForPlayer(room.rules, action.fromId, room.teamOf)
+      const names = Object.fromEntries(
+        Object.values(room.players).map((p) => [p.id, p.name]),
+      )
+      const mapC = (): Parameters<typeof applySliceCAction>[4] | null => {
+        switch (action.type) {
+          case 'nb-debt-select':
+            return {
+              type: 'debt-select',
+              fromId: action.fromId,
+              trayId,
+              selectedDeeds: action.selectedDeeds,
+              cashOffer: action.cashOffer,
+            }
+          case 'nb-debt-pay':
+            return { type: 'debt-pay', fromId: action.fromId, trayId }
+          case 'nb-build':
+            return { type: 'build', fromId: action.fromId, trayId, spaceIndex: action.spaceIndex }
+          case 'nb-sell-building':
+            return {
+              type: 'sell-building',
+              fromId: action.fromId,
+              trayId,
+              spaceIndex: action.spaceIndex,
+            }
+          case 'nb-mortgage':
+            return { type: 'mortgage', fromId: action.fromId, trayId, spaceIndex: action.spaceIndex }
+          case 'nb-unmortgage':
+            return {
+              type: 'unmortgage',
+              fromId: action.fromId,
+              trayId,
+              spaceIndex: action.spaceIndex,
+            }
+          case 'nb-trade-open':
+            return {
+              type: 'trade-open',
+              fromId: action.fromId,
+              trayId,
+              toTrayId: action.toTrayId,
+            }
+          case 'nb-trade-draft':
+            return {
+              type: 'trade-draft',
+              fromId: action.fromId,
+              trayId,
+              offerCash: action.offerCash,
+              offerDeeds: action.offerDeeds,
+              offerJailFreeWild: action.offerJailFreeWild,
+              offerJailFreeNeighbor: action.offerJailFreeNeighbor,
+              askCash: action.askCash,
+              askDeeds: action.askDeeds,
+              askJailFreeWild: action.askJailFreeWild,
+              askJailFreeNeighbor: action.askJailFreeNeighbor,
+            }
+          case 'nb-trade-send':
+            return { type: 'trade-send', fromId: action.fromId, trayId }
+          case 'nb-trade-accept':
+            return { type: 'trade-accept', fromId: action.fromId, trayId }
+          case 'nb-trade-decline':
+            return { type: 'trade-decline', fromId: action.fromId, trayId }
+          case 'nb-trade-counter':
+            return { type: 'trade-counter', fromId: action.fromId, trayId }
+          case 'nb-leave-game':
+            return {
+              type: 'leave-game',
+              fromId: action.fromId,
+              trayId,
+              giftTo: action.giftTo,
+              spectate: action.spectate,
+            }
+          case 'nb-player-away':
+            return { type: 'player-away', fromId: action.fromId, at: action.at }
+          case 'nb-player-back':
+            return { type: 'player-back', fromId: action.fromId }
+          case 'nb-remove-player':
+            return {
+              type: 'remove-player',
+              fromId: action.fromId,
+              targetPlayerId: action.targetPlayerId,
+              now,
+            }
+          case 'nb-accept-join':
+            return {
+              type: 'accept-join',
+              fromId: action.fromId,
+              playerId: action.playerId,
+              pieceId: action.pieceId,
+              teamId: action.teamId,
+            }
+          case 'nb-decline-join':
+            return {
+              type: 'decline-join',
+              fromId: action.fromId,
+              playerId: action.playerId,
+            }
+          default:
+            return null
+        }
+      }
+      const ca = mapC()
+      if (!ca) return room
+      const game = applySliceCAction(room.game, room.rules, names, room.hostId, ca)
       const status = game.phase === 'finished' ? 'finished' : room.status
       return {
         ...room,

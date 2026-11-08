@@ -17,6 +17,8 @@ import { clearActiveSession } from '../lib/activeSession'
 import { HOST_AWAY_MS, neighborhoodLobbyReady } from '../rooms/reducer'
 import type { NeighborhoodRoom } from '../rooms/types'
 import { useRoom } from '../hooks/useRoom'
+import { trayIdForPlayer } from '../core/neighborhood/engine'
+import { NeighborhoodManagePanel } from './NeighborhoodManagePanel'
 import { NeighborhoodPlayPanel, NeighborhoodScorePanel } from './NeighborhoodPlayPanel'
 
 function formatGrace(ms: number) {
@@ -46,14 +48,39 @@ export function NeighborhoodRoomView(props: {
   const maxPhones = maxPhonesForRules(room.rules)
   const ready = neighborhoodLobbyReady(room)
   const [showHostLeave, setShowHostLeave] = useState(false)
+  const [leaveGift, setLeaveGift] = useState<'bank' | string>('bank')
+  const [showLeaveGift, setShowLeaveGift] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (!room.hostAwayAt) return
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [room.hostAwayAt])
+  }, [])
+
+  // Mark this phone away / back for disconnect grace
+  useEffect(() => {
+    if (!room.game || room.status === 'lobby') return
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') {
+        send({ type: 'nb-player-away', fromId: playerId, at: Date.now() })
+      }
+    }
+    const onShow = () => {
+      if (document.visibilityState === 'visible') {
+        send({ type: 'nb-player-back', fromId: playerId })
+      }
+    }
+    const onPageHide = () => send({ type: 'nb-player-away', fromId: playerId, at: Date.now() })
+    document.addEventListener('visibilitychange', onHide)
+    document.addEventListener('visibilitychange', onShow)
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      document.removeEventListener('visibilitychange', onShow)
+      window.removeEventListener('pagehide', onPageHide)
+    }
+  }, [room.game, room.status, playerId, send])
 
   const hostAwayRemaining =
     room.hostAwayAt != null
@@ -61,6 +88,10 @@ export function NeighborhoodRoomView(props: {
       : null
 
   const requestLeave = () => {
+    if (room.game && room.status === 'playing') {
+      setShowLeaveGift(true)
+      return
+    }
     const activeOthers = active.filter((p) => p.id !== playerId)
     if (isHost && activeOthers.length > 0) {
       setShowHostLeave(true)
@@ -69,6 +100,26 @@ export function NeighborhoodRoomView(props: {
     send({ type: 'leave', playerId })
     clearActiveSession()
     navigate('/')
+  }
+
+  const confirmLeaveGift = (spectate: boolean) => {
+    send({
+      type: 'nb-leave-game',
+      fromId: playerId,
+      giftTo: leaveGift,
+      spectate,
+    })
+    if (isHost) {
+      const activeOthers = active.filter((p) => p.id !== playerId && !p.left)
+      if (activeOthers.length > 0) {
+        setShowLeaveGift(false)
+        setShowHostLeave(true)
+        return
+      }
+    }
+    send({ type: 'leave', playerId })
+    clearActiveSession()
+    navigate(spectate ? `/room/${room.code}` : '/')
   }
 
   const pickPiece = (pieceId: NeighborhoodPieceId) => {
@@ -135,6 +186,112 @@ export function NeighborhoodRoomView(props: {
         <p className="muted" role="status">
           You are marked away for others ({Math.ceil(hostAwayRemaining / 1000)}s until handoff).
         </p>
+      ) : null}
+
+      {room.game
+        ? Object.entries(room.game.awayAt ?? {}).map(([pid, at]) => {
+            if (at == null || pid === playerId) return null
+            const leftMs = room.rules.disconnectGraceMs - (now - at)
+            const name = room.players[pid]?.name ?? 'Player'
+            const expired = leftMs <= 0
+            return (
+              <p key={pid} className="warn-banner" role="status">
+                {name} disconnected
+                {expired
+                  ? ' — grace over'
+                  : ` — ${Math.ceil(leftMs / 1000)}s before owner may remove`}
+                {isHost && expired ? (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      className="btn danger"
+                      onClick={() =>
+                        send({ type: 'nb-remove-player', fromId: playerId, targetPlayerId: pid })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            )
+          })
+        : null}
+
+      {isHost && room.game && (room.game.joinRequests ?? []).length > 0 ? (
+        <div className="warn-banner">
+          <p>Join requests</p>
+          {(room.game.joinRequests ?? []).map((r) => {
+            const used = new Set(Object.values(room.game!.trays).map((t) => t.pieceId))
+            const free = NEIGHBORHOOD_PIECES.find((p) => !used.has(p))
+            return (
+              <div key={r.playerId} className="chip-row">
+                <span>{r.name}</span>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={!free}
+                  onClick={() =>
+                    free &&
+                    send({
+                      type: 'nb-accept-join',
+                      fromId: playerId,
+                      playerId: r.playerId,
+                      pieceId: free,
+                    })
+                  }
+                >
+                  Accept {free ? PIECE_LABELS[free] : ''}
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() =>
+                    send({ type: 'nb-decline-join', fromId: playerId, playerId: r.playerId })
+                  }
+                >
+                  Decline
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
+
+      {showLeaveGift ? (
+        <div className="bubble">
+          <h2>Leave game</h2>
+          <p className="muted">Gift remaining estate, then spectate or go Home.</p>
+          <label className="field">
+            <span>Gift to</span>
+            <select value={leaveGift} onChange={(e) => setLeaveGift(e.target.value)}>
+              <option value="bank">Bank</option>
+              {room.game
+                ? Object.keys(room.game.trays)
+                    .filter((id) => id !== trayIdForPlayer(room.rules, playerId, room.teamOf))
+                    .map((id) => (
+                      <option key={id} value={id}>
+                        {room.game!.trays[id]!.memberIds
+                          .map((p) => room.players[p]?.name ?? '?')
+                          .join(' & ')}
+                      </option>
+                    ))
+                : null}
+            </select>
+          </label>
+          <div className="modal-actions">
+            <button type="button" className="btn secondary" onClick={() => setShowLeaveGift(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn secondary" onClick={() => confirmLeaveGift(true)}>
+              Spectate
+            </button>
+            <button type="button" className="btn danger" onClick={() => confirmLeaveGift(false)}>
+              Home
+            </button>
+          </div>
+        </div>
       ) : null}
 
       <div className="room-topbar">
@@ -253,6 +410,12 @@ export function NeighborhoodRoomView(props: {
     <div className="panel">
       <h2>Table</h2>
       <NeighborhoodScorePanel room={room} />
+      {room.status === 'playing' ? (
+        <>
+          <h2 className="section-heading">Manage</h2>
+          <NeighborhoodManagePanel room={room} playerId={playerId} send={send} />
+        </>
+      ) : null}
     </div>
   )
 

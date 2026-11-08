@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { BOARD, spaceAt } from '../core/neighborhood/board'
+import { bareDeedIndexes, deedCreditValue } from '../core/neighborhood/economy'
 import {
   canTapTray,
   currentTrayId,
@@ -31,6 +33,8 @@ export function NeighborhoodPlayPanel(props: {
   const turnId = currentTrayId(game)
   const myTurn = Boolean(turnId && canTapTray(game, playerId, turnId))
   const prompt = game.prompt
+  const [debtDeeds, setDebtDeeds] = useState<number[]>([])
+  const [debtCash, setDebtCash] = useState(0)
 
   const opening = game.phase === 'opening'
   const needsOpening = opening && game.openingNeeds.includes(myTrayId)
@@ -231,16 +235,119 @@ export function NeighborhoodPlayPanel(props: {
             {prompt?.type === 'debt' && myTurn ? (
               <>
                 <p className="warn-banner">
-                  Short {formatCash(prompt.amount)} for {prompt.reason}. Mortgage/sell arrives next
-                  slice — for now you can only go out.
+                  Owe {formatCash(prompt.amount)} — {prompt.reason}. Sell/mortgage in Manage, then
+                  select cover here.
                 </p>
-                <button
-                  type="button"
-                  className="btn danger"
-                  onClick={() => send({ type: 'nb-debt-bankrupt', fromId: playerId })}
-                >
-                  Go out
-                </button>
+                <div className="chip-row">
+                  {bareDeedIndexes(game, myTrayId).map((i) => {
+                    const selected = debtDeeds.includes(i)
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`chip ${selected ? 'selected' : ''}`}
+                        onClick={() => {
+                          const next = selected
+                            ? debtDeeds.filter((x) => x !== i)
+                            : [...debtDeeds, i]
+                          setDebtDeeds(next)
+                          send({
+                            type: 'nb-debt-select',
+                            fromId: playerId,
+                            selectedDeeds: next,
+                            cashOffer: debtCash,
+                          })
+                        }}
+                      >
+                        {spaceAt(i).name} ({formatCash(deedCreditValue(game.deeds[i]!, i))})
+                      </button>
+                    )
+                  })}
+                </div>
+                <label className="field">
+                  <span>Cash to add</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={debtCash}
+                    onChange={(e) => {
+                      const v = Number(e.target.value) || 0
+                      setDebtCash(v)
+                      send({
+                        type: 'nb-debt-select',
+                        fromId: playerId,
+                        selectedDeeds: debtDeeds,
+                        cashOffer: v,
+                      })
+                    }}
+                  />
+                </label>
+                <p className="muted">
+                  Cover selected:{' '}
+                  {formatCash(
+                    debtDeeds.reduce((s, i) => s + deedCreditValue(game.deeds[i]!, i), 0) +
+                      debtCash,
+                  )}{' '}
+                  / {formatCash(prompt.amount)}
+                </p>
+                <div className="chip-row">
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => send({ type: 'nb-debt-pay', fromId: playerId })}
+                  >
+                    Pay debt
+                  </button>
+                  <button
+                    type="button"
+                    className="btn danger"
+                    onClick={() => send({ type: 'nb-debt-bankrupt', fromId: playerId })}
+                  >
+                    Go out
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {prompt?.type === 'trade' ? (
+              <>
+                <p>
+                  Trade {trayLabel(room, prompt.fromTrayId)} → {trayLabel(room, prompt.toTrayId)}
+                  {prompt.frozen ? ' (waiting reply)' : ' (drafting)'}
+                </p>
+                <p className="muted">
+                  Offer {formatCash(prompt.offerCash)} + {prompt.offerDeeds.length} deeds · Ask{' '}
+                  {formatCash(prompt.askCash)} + {prompt.askDeeds.length} deeds
+                </p>
+                {prompt.frozen &&
+                prompt.awaitingTrayId &&
+                canTapTray(game, playerId, prompt.awaitingTrayId) ? (
+                  <div className="chip-row">
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => send({ type: 'nb-trade-accept', fromId: playerId })}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() => send({ type: 'nb-trade-counter', fromId: playerId })}
+                    >
+                      Counter
+                    </button>
+                    <button
+                      type="button"
+                      className="btn danger"
+                      onClick={() => send({ type: 'nb-trade-decline', fromId: playerId })}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                ) : (
+                  <p className="muted">Waiting on trade…</p>
+                )}
               </>
             ) : null}
 

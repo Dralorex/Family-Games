@@ -54,9 +54,36 @@ export type NbPrompt =
       amount: number
       toTrayId: TrayId | 'bank' | 'jackpot'
       reason: string
+      /** Selected bare deed indexes */
+      selectedDeeds: number[]
+      /** Cash offered on top (≤ gap) */
+      cashOffer: number
+    }
+  | {
+      type: 'trade'
+      fromTrayId: TrayId
+      toTrayId: TrayId
+      /** Whose response is needed (null while drafting) */
+      awaitingTrayId: TrayId | null
+      offerCash: number
+      offerDeeds: number[]
+      offerJailFreeWild: number
+      offerJailFreeNeighbor: number
+      askCash: number
+      askDeeds: number[]
+      askJailFreeWild: number
+      askJailFreeNeighbor: number
+      frozen: boolean
     }
 
 export type NbPhase = 'opening' | 'playing' | 'finished'
+
+export interface JoinRequest {
+  playerId: string
+  name: string
+  sessionId: string
+  at: number
+}
 
 export interface NeighborhoodGame {
   phase: NbPhase
@@ -80,6 +107,12 @@ export interface NeighborhoodGame {
   /** Recent public log lines */
   log: string[]
   winnerTrayIds: TrayId[]
+  /** End-turns completed since opening — open join until ≥ turnOrder.length */
+  turnsTaken: number
+  /** playerId → away timestamp */
+  awayAt: Record<string, number | null>
+  /** Late join queue (after first round) */
+  joinRequests: JoinRequest[]
 }
 
 export function emptyDeed(): DeedState {

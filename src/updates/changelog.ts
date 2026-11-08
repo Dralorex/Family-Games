@@ -26,7 +26,7 @@ export const UPDATES: UpdateNotes[] = [
   {
     version: '0.0.14',
     pr: 14,
-    title: 'Neighborhood lobby + playable core',
+    title: 'Neighborhood lobby, play, and economy',
     added: [
       'Neighborhood under Games — create room with locked house rules',
       'Lobby seating: original pieces, Solo / Shared tray / Alliance styles',
@@ -35,6 +35,9 @@ export const UPDATES: UpdateNotes[] = [
       'Host crypto dice, 40-space board, buy/auction, rent, Home, jail, cards',
       'Shared trays (first legal tap) and alliance rent skips on the live board',
       'Digit wallets, public positions/owners, and a short event log',
+      'Build/sell evenly, mortgage/unmortgage, trades, and a debt cover screen',
+      'Leave with gift → spectate; disconnect grace countdown + owner Remove',
+      'Late join: open during first round, then owner Accept/Decline (cash only)',
     ],
     updated: [
       'Games hub lists Neighborhood beside Hot Potato',
