@@ -36,6 +36,12 @@ npm run dev
 
 GitHub Actions deploys `main` to GitHub Pages. Enable **Settings → Pages → Source: GitHub Actions** on the repo if needed.
 
+## Update notes (in-app)
+
+After a deploy, the first time someone opens Home they may see a **What’s new** overlay (`UP #0.0.<PR#>`). Notes live in `src/updates/changelog.ts`.
+
+When shipping changes: check open PRs first — if this work already has an open PR, edit that entry on that branch; if everything is merged, open a new PR and add a new top entry using that PR’s number.
+
 ## Sync note
 
 Rooms sync live over MQTT (public HiveMQ broker) so the static Pages site can still do multiplayer without a custom backend. Fine for family use; don’t put secrets in room state.

@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom'
 import { PartyListener } from '../components/PartyListener'
 import { ResumePrompt } from '../components/ResumePrompt'
+import { UpdateNotesOverlay } from '../components/UpdateNotesOverlay'
 import { getActiveParty } from '../lib/party'
 
 export function Home() {
   const party = getActiveParty()
   return (
     <main className="home">
+      <UpdateNotesOverlay />
       <PartyListener />
       <div className="home-atmosphere" aria-hidden />
       <div className="home-content">

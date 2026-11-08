@@ -1024,3 +1024,117 @@ button {
 .scorecard-main-stack > .room-topbar {
   grid-template-columns: 1fr auto;
 }
+
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: max(0.75rem, env(safe-area-inset-top)) 0.85rem max(0.75rem, env(safe-area-inset-bottom));
+  background: rgba(4, 20, 15, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.update-sheet {
+  position: relative;
+  width: min(100%, 26rem);
+  max-height: min(85dvh, 40rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-solid);
+  color: var(--ink);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.update-close {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 2;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 32, 27, 0.08);
+  color: var(--ink);
+  font-size: 1.6rem;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.update-sheet-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 1.15rem 1.15rem 1.25rem;
+  display: grid;
+  gap: 1.1rem;
+}
+
+.update-eyebrow {
+  margin: 0.15rem 2rem 0 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.update-block {
+  display: grid;
+  gap: 0.65rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.update-block:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.update-block-header h2 {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.update-version {
+  margin: 0;
+  font-weight: 800;
+  color: var(--accent-deep);
+  font-size: 0.95rem;
+}
+
+.update-pr {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.update-section h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+.update-section ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.update-section li {
+  font-size: 0.95rem;
+}
+
+.update-continue {
+  width: 100%;
+  margin-top: 0.25rem;
+}
