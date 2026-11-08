@@ -1,3 +1,4 @@
+import { defaultNeighborhoodRules } from '../core/neighborhood/types'
 import type { RoomState } from './types'
 
 /** Backfill fields added after v1 launch. */
@@ -30,6 +31,7 @@ export function normalizeRoom(room: RoomState): RoomState {
       creatorName,
       players,
       pendingHostReturn: room.pendingHostReturn ?? null,
+      rules: defaultNeighborhoodRules(room.rules),
       game: room.game
         ? {
             ...room.game,

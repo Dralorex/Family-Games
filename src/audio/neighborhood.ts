@@ -64,10 +64,16 @@ export async function playNeighborhoodCue(kind: NbCinematic['kind']): Promise<vo
       blip(audio, 280, t, 0.05, 0.05, 'triangle')
       break
     case 'pay':
+    case 'pay-each':
       blip(audio, 360, t, 0.1, 0.07)
       blip(audio, 240, t + 0.1, 0.14, 0.06)
+      if (kind === 'pay-each') {
+        blip(audio, 300, t + 0.22, 0.1, 0.05)
+        blip(audio, 220, t + 0.34, 0.12, 0.05)
+      }
       break
     case 'collect':
+    case 'collect-each':
       blip(audio, 480, t, 0.08, 0.07)
       blip(audio, 640, t + 0.09, 0.1, 0.08)
       blip(audio, 800, t + 0.2, 0.12, 0.07)

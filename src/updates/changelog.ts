@@ -42,6 +42,12 @@ export const UPDATES: UpdateNotes[] = [
       'Matching Web Audio cues; Settings mute; refresh skips movies',
       '2D square board with color spaces and original SVG piece tokens',
       'Town Square jackpot costume bill face + climbing digit total',
+      'Starting deeds deal (0/1/2) at printed price with unaffordable redraw',
+      'Closest-cover leave settlement before gift; bank/jackpot debt is cash-only',
+      'Hotel sell-back respects bank houses; straight-to-hotel when houses are gone',
+      'Create option: Last Alive (default) or First Bankruptcy (equity winners)',
+      'Spectating label; jail-free in trades; frozen trade reserves; pay-each movies',
+      'Piece steps one space at a time after the dice tumble',
     ],
     updated: [
       'Games hub lists Neighborhood beside Hot Potato',

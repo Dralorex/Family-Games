@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { BOARD, isDeedSpace, spaceAt } from '../core/neighborhood/board'
 import {
   bareDeedIndexes,
+  buildCost,
   canBuildOn,
   canMortgage,
   canSellBuilding,
   canUnmortgage,
+  sellBuildingRefund,
   unmortgageCost,
 } from '../core/neighborhood/economy'
 import {
@@ -29,6 +31,10 @@ export function NeighborhoodManagePanel(props: {
   const [askCash, setAskCash] = useState(0)
   const [offerDeeds, setOfferDeeds] = useState<number[]>([])
   const [askDeeds, setAskDeeds] = useState<number[]>([])
+  const [offerJailFreeWild, setOfferJailFreeWild] = useState(0)
+  const [offerJailFreeNeighbor, setOfferJailFreeNeighbor] = useState(0)
+  const [askJailFreeWild, setAskJailFreeWild] = useState(0)
+  const [askJailFreeNeighbor, setAskJailFreeNeighbor] = useState(0)
 
   if (!game || game.phase !== 'playing') {
     return <p className="muted">Manage opens during play.</p>
@@ -46,9 +52,14 @@ export function NeighborhoodManagePanel(props: {
   const others = Object.keys(game.trays).filter(
     (id) => id !== myTrayId && !game.trays[id]!.spectating,
   )
+  const theirTray = tradeTarget ? game.trays[tradeTarget] : null
 
   const toggle = (list: number[], i: number, set: (n: number[]) => void) => {
     set(list.includes(i) ? list.filter((x) => x !== i) : [...list, i])
+  }
+
+  if (myTray?.spectating) {
+    return <p className="nb-spectating-banner">Spectating — manage is closed.</p>
   }
 
   return (
@@ -59,6 +70,12 @@ export function NeighborhoodManagePanel(props: {
         {mine.map((i) => {
           const d = game.deeds[i]!
           const s = spaceAt(i)
+          const cost = canBuildOn(game, myTrayId, i, room.rules)
+            ? buildCost(game, i, room.rules)
+            : 0
+          const refund = canSellBuilding(game, myTrayId, i)
+            ? sellBuildingRefund(game, i, room.rules)
+            : 0
           return (
             <li key={i}>
               <div>
@@ -74,7 +91,9 @@ export function NeighborhoodManagePanel(props: {
                       className="chip"
                       onClick={() => send({ type: 'nb-build', fromId: playerId, spaceIndex: i })}
                     >
-                      Build {formatCash(s.kind === 'property' ? s.houseCost : 0)}
+                      {cost > (s.kind === 'property' ? s.houseCost : 0)
+                        ? `Hotel ${formatCash(cost)}`
+                        : `Build ${formatCash(cost)}`}
                     </button>
                   ) : null}
                   {canSellBuilding(game, myTrayId, i) ? (
@@ -85,7 +104,7 @@ export function NeighborhoodManagePanel(props: {
                         send({ type: 'nb-sell-building', fromId: playerId, spaceIndex: i })
                       }
                     >
-                      Sell ½
+                      Sell {formatCash(refund)}
                     </button>
                   ) : null}
                   {canMortgage(game, myTrayId, i) ? (
@@ -117,7 +136,11 @@ export function NeighborhoodManagePanel(props: {
 
       <h2 className="section-heading">Trade</h2>
       {!myTurn || game.prompt ? (
-        <p className="muted">Trades open on your turn when nothing else is pending.</p>
+        <p className="muted">
+          {game.prompt?.type === 'trade' && game.prompt.frozen
+            ? 'Trade offer frozen — waiting for a reply. Reserved items cannot be spent.'
+            : 'Trades open on your turn when nothing else is pending.'}
+        </p>
       ) : (
         <>
           <label className="field">
@@ -149,6 +172,51 @@ export function NeighborhoodManagePanel(props: {
               onChange={(e) => setAskCash(Number(e.target.value) || 0)}
             />
           </label>
+          {(myTray?.jailFreeWild ?? 0) + (myTray?.jailFreeNeighbor ?? 0) > 0 ? (
+            <div className="chip-row">
+              {(myTray?.jailFreeWild ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  className={`chip ${offerJailFreeWild > 0 ? 'selected' : ''}`}
+                  onClick={() => setOfferJailFreeWild(offerJailFreeWild > 0 ? 0 : 1)}
+                >
+                  Offer jail-free (Wild)
+                </button>
+              ) : null}
+              {(myTray?.jailFreeNeighbor ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  className={`chip ${offerJailFreeNeighbor > 0 ? 'selected' : ''}`}
+                  onClick={() => setOfferJailFreeNeighbor(offerJailFreeNeighbor > 0 ? 0 : 1)}
+                >
+                  Offer jail-free (Notes)
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {theirTray &&
+          (theirTray.jailFreeWild > 0 || theirTray.jailFreeNeighbor > 0) ? (
+            <div className="chip-row">
+              {theirTray.jailFreeWild > 0 ? (
+                <button
+                  type="button"
+                  className={`chip ${askJailFreeWild > 0 ? 'selected' : ''}`}
+                  onClick={() => setAskJailFreeWild(askJailFreeWild > 0 ? 0 : 1)}
+                >
+                  Ask jail-free (Wild)
+                </button>
+              ) : null}
+              {theirTray.jailFreeNeighbor > 0 ? (
+                <button
+                  type="button"
+                  className={`chip ${askJailFreeNeighbor > 0 ? 'selected' : ''}`}
+                  onClick={() => setAskJailFreeNeighbor(askJailFreeNeighbor > 0 ? 0 : 1)}
+                >
+                  Ask jail-free (Notes)
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <p className="muted">Your bare deeds to offer</p>
           <div className="chip-row">
             {bareDeedIndexes(game, myTrayId).map((i) => (
@@ -190,12 +258,12 @@ export function NeighborhoodManagePanel(props: {
                 fromId: playerId,
                 offerCash,
                 offerDeeds,
-                offerJailFreeWild: 0,
-                offerJailFreeNeighbor: 0,
+                offerJailFreeWild,
+                offerJailFreeNeighbor,
                 askCash,
                 askDeeds,
-                askJailFreeWild: 0,
-                askJailFreeNeighbor: 0,
+                askJailFreeWild,
+                askJailFreeNeighbor,
               })
               send({ type: 'nb-trade-send', fromId: playerId })
             }}

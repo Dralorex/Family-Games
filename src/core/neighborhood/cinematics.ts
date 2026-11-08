@@ -15,9 +15,26 @@ export type NbCinematic =
     }
   | {
       id: number
+      kind: 'pay-each'
+      fromTrayId: TrayId
+      toTrayIds: TrayId[]
+      amountEach: number
+      tone: CinematicTone
+    }
+  | {
+      id: number
       kind: 'collect'
       trayId: TrayId
       amount: number
+      tone: CinematicTone
+      reason?: string
+    }
+  | {
+      id: number
+      kind: 'collect-each'
+      trayId: TrayId
+      fromTrayIds: TrayId[]
+      amountEach: number
       tone: CinematicTone
       reason?: string
     }

@@ -30,6 +30,9 @@ export type AlliancePreset = '2v2v2v2' | '3v3' | '4v4'
 
 export type BuildingSupply = 'standard' | 'scarce' | 'plentiful' | 'unlimited'
 
+/** Last Alive = play until one tray remains. First Bankruptcy = end on first out, score equity. */
+export type WinMode = 'last-alive' | 'first-bankruptcy'
+
 export interface NeighborhoodRules {
   teamStyle: TeamStyle
   /** Required when teamStyle === 'alliance' */
@@ -42,7 +45,10 @@ export interface NeighborhoodRules {
   buildingSupply: BuildingSupply
   /** Booklet fee — starts on */
   unmortgageTenPercent: boolean
+  /** @deprecated prefer winMode; kept for older rooms */
   stopAtFirstBankruptcy: boolean
+  /** Default last-alive */
+  winMode: WinMode
   /** Disconnect grace before owner may Remove (ms) */
   disconnectGraceMs: number
 }
@@ -68,9 +74,19 @@ export function defaultNeighborhoodRules(
     jailBlock: partial?.jailBlock ?? false,
     buildingSupply: partial?.buildingSupply ?? 'standard',
     unmortgageTenPercent: partial?.unmortgageTenPercent ?? true,
-    stopAtFirstBankruptcy: partial?.stopAtFirstBankruptcy ?? false,
+    winMode:
+      partial?.winMode ??
+      (partial?.stopAtFirstBankruptcy ? 'first-bankruptcy' : 'last-alive'),
+    stopAtFirstBankruptcy:
+      (partial?.winMode ??
+        (partial?.stopAtFirstBankruptcy ? 'first-bankruptcy' : 'last-alive')) ===
+      'first-bankruptcy',
     disconnectGraceMs: partial?.disconnectGraceMs ?? DEFAULT_DISCONNECT_GRACE_MS,
   }
+}
+
+export function endsOnFirstBankruptcy(rules: NeighborhoodRules): boolean {
+  return rules.winMode === 'first-bankruptcy' || rules.stopAtFirstBankruptcy === true
 }
 
 export function maxPhonesForRules(rules: NeighborhoodRules): number {

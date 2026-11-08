@@ -8,6 +8,7 @@ import {
   type BuildingSupply,
   type NeighborhoodRules,
   type TeamStyle,
+  type WinMode,
 } from '../core/neighborhood/types'
 import { setActiveSession } from '../lib/activeSession'
 import { createPlayerId, createSessionId, generateCode } from '../lib/codes'
@@ -42,7 +43,7 @@ export function CreateNeighborhood() {
   const [jailBlock, setJailBlock] = useState(false)
   const [buildingSupply, setBuildingSupply] = useState<BuildingSupply>('standard')
   const [unmortgageTenPercent, setUnmortgageTenPercent] = useState(true)
-  const [stopAtFirstBankruptcy, setStopAtFirstBankruptcy] = useState(false)
+  const [winMode, setWinMode] = useState<WinMode>('last-alive')
   const [graceMin, setGraceMin] = useState(5)
 
   const rules: NeighborhoodRules = useMemo(
@@ -57,7 +58,7 @@ export function CreateNeighborhood() {
         jailBlock,
         buildingSupply,
         unmortgageTenPercent,
-        stopAtFirstBankruptcy,
+        winMode,
         disconnectGraceMs: Math.max(1, Math.min(60, graceMin)) * 60 * 1000,
       }),
     [
@@ -70,7 +71,7 @@ export function CreateNeighborhood() {
       jailBlock,
       buildingSupply,
       unmortgageTenPercent,
-      stopAtFirstBankruptcy,
+      winMode,
       graceMin,
     ],
   )
@@ -234,13 +235,29 @@ export function CreateNeighborhood() {
           />
           <span>10% to unmortgage (booklet)</span>
         </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={stopAtFirstBankruptcy}
-            onChange={(e) => setStopAtFirstBankruptcy(e.target.checked)}
-          />
-          <span>Stop at the first bankruptcy</span>
+        <label className="field">
+          <span>How the game ends</span>
+          <div className="chip-row">
+            <button
+              type="button"
+              className={`chip ${winMode === 'last-alive' ? 'selected' : ''}`}
+              onClick={() => setWinMode('last-alive')}
+            >
+              Last Alive
+            </button>
+            <button
+              type="button"
+              className={`chip ${winMode === 'first-bankruptcy' ? 'selected' : ''}`}
+              onClick={() => setWinMode('first-bankruptcy')}
+            >
+              First Bankruptcy
+            </button>
+          </div>
+          <p className="muted">
+            {winMode === 'last-alive'
+              ? 'Play until one seat remains.'
+              : 'First seat out ends the game; highest equity among remaining seats wins.'}
+          </p>
         </label>
 
         <label className="field">

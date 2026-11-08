@@ -4,10 +4,10 @@ import {
   isDeedSpace,
   spaceAt,
   type ColorGroup,
-  type PropertyDef,
 } from './board'
 import type { DeedState, NeighborhoodGame, TrayId } from './gameTypes'
 import { ceilToThousand } from './money'
+import { availableCash, isDeedReserved } from './tradeReserve'
 import type { NeighborhoodRules } from './types'
 
 export function colorOfSpace(index: number): ColorGroup | null {
@@ -49,7 +49,27 @@ export function houseCountOnColor(game: NeighborhoodGame, group: ColorGroup): nu
   })
 }
 
-/** Even-build: can add one house/hotel step on this lot. */
+/** Cost to build one step (or straight-to-hotel when bank has no houses). */
+export function buildCost(
+  game: NeighborhoodGame,
+  spaceIndex: number,
+  rules: NeighborhoodRules,
+): number {
+  const space = spaceAt(spaceIndex)
+  if (space.kind !== 'property') return 0
+  const deed = game.deeds[spaceIndex]!
+  const mine = deed.hotel ? 5 : deed.houses
+  const supply = buildingSupplyLeft(game, rules)
+  const noHouses = supply.houses !== null && supply.houses <= 0
+  const hotelsOk = supply.hotels === null || supply.hotels > 0
+  if (noHouses && hotelsOk && mine < 5) {
+    // Straight to hotel: pay remaining house-steps at full house price
+    return space.houseCost * (5 - mine)
+  }
+  return space.houseCost
+}
+
+/** Even-build: house step, or straight hotel if bank has no houses left. */
 export function canBuildOn(
   game: NeighborhoodGame,
   trayId: TrayId,
@@ -62,24 +82,31 @@ export function canBuildOn(
   if (anyMortgagedInColor(game, space.group)) return false
   const deed = game.deeds[spaceIndex]!
   if (deed.ownerTrayId !== trayId || deed.mortgaged) return false
+  if (isDeedReserved(game, trayId, spaceIndex)) return false
   if (deed.hotel) return false
 
   const counts = houseCountOnColor(game, space.group)
-  const mine = deed.hotel ? 5 : deed.houses
+  const mine = deed.houses
   const min = Math.min(...counts)
   if (mine > min) return false // uneven
   if (mine >= 5) return false
 
   const supply = buildingSupplyLeft(game, rules)
+  const hotelsOk = supply.hotels === null || supply.hotels > 0
+  const housesOk = supply.houses === null || supply.houses > 0
+  const noHouses = supply.houses !== null && supply.houses <= 0
+
   if (mine === 4) {
-    // hotel: need hotel available (or unlimited)
-    if (supply.hotels !== null && supply.hotels <= 0) return false
-  } else if (supply.houses !== null && supply.houses <= 0) {
+    if (!hotelsOk) return false
+  } else if (noHouses) {
+    // Straight hotel when houses are gone
+    if (!hotelsOk) return false
+  } else if (!housesOk) {
     return false
   }
 
-  const cost = space.houseCost
-  return (game.trays[trayId]?.cash ?? 0) >= cost
+  const cost = buildCost(game, spaceIndex, rules)
+  return availableCash(game, trayId) >= cost
 }
 
 export function canSellBuilding(
@@ -91,6 +118,7 @@ export function canSellBuilding(
   if (space.kind !== 'property') return false
   const deed = game.deeds[spaceIndex]!
   if (deed.ownerTrayId !== trayId) return false
+  if (isDeedReserved(game, trayId, spaceIndex)) return false
   if (!deed.hotel && deed.houses <= 0) return false
   const counts = houseCountOnColor(game, space.group)
   const mine = deed.hotel ? 5 : deed.houses
@@ -144,6 +172,7 @@ export function canMortgage(
   trayId: TrayId,
   spaceIndex: number,
 ): boolean {
+  if (isDeedReserved(game, trayId, spaceIndex)) return false
   const group = colorOfSpace(spaceIndex)
   if (group && !colorIsBare(game, group)) return false
   const deed = game.deeds[spaceIndex]
@@ -158,7 +187,8 @@ export function canUnmortgage(
 ): boolean {
   const deed = game.deeds[spaceIndex]
   if (!deed || deed.ownerTrayId !== trayId || !deed.mortgaged) return false
-  return (game.trays[trayId]?.cash ?? 0) >= unmortgageCost(spaceIndex, rules)
+  if (isDeedReserved(game, trayId, spaceIndex)) return false
+  return availableCash(game, trayId) >= unmortgageCost(spaceIndex, rules)
 }
 
 export function deedCreditValue(deed: DeedState, spaceIndex: number): number {
@@ -191,13 +221,14 @@ export function applyBuild(
   rules: NeighborhoodRules,
 ): NeighborhoodGame | null {
   if (!canBuildOn(game, trayId, spaceIndex, rules)) return null
-  const space = spaceAt(spaceIndex) as PropertyDef
   const deed = game.deeds[spaceIndex]!
   const tray = game.trays[trayId]!
-  const cost = space.houseCost
+  const cost = buildCost(game, spaceIndex, rules)
+  const supply = buildingSupplyLeft(game, rules)
+  const noHouses = supply.houses !== null && supply.houses <= 0
   let houses = deed.houses
   let hotel = deed.hotel
-  if (houses >= 4) {
+  if (houses >= 4 || noHouses) {
     houses = 0
     hotel = true
   } else {
@@ -216,21 +247,43 @@ export function applyBuild(
   }
 }
 
+/** Cash refund for selling one building step (hotel respects bank house supply). */
+export function sellBuildingRefund(
+  game: NeighborhoodGame,
+  spaceIndex: number,
+  rules: NeighborhoodRules,
+): number {
+  const space = spaceAt(spaceIndex)
+  if (space.kind !== 'property') return 0
+  const deed = game.deeds[spaceIndex]!
+  const half = Math.floor(space.houseCost / 2)
+  if (!deed.hotel) return half
+  const supply = buildingSupplyLeft(game, rules)
+  const canGive = supply.houses === null ? 4 : Math.min(4, Math.max(0, supply.houses))
+  return half * (5 - canGive)
+}
+
+/**
+ * Sell one building step (even reverse).
+ * Hotel → as many houses as the bank can return (≤4); refund half house × steps removed.
+ */
 export function applySellBuilding(
   game: NeighborhoodGame,
   trayId: TrayId,
   spaceIndex: number,
+  rules: NeighborhoodRules,
 ): NeighborhoodGame | null {
   if (!canSellBuilding(game, trayId, spaceIndex)) return null
-  const space = spaceAt(spaceIndex) as PropertyDef
   const deed = game.deeds[spaceIndex]!
   const tray = game.trays[trayId]!
-  const refund = Math.floor(space.houseCost / 2)
+  const refund = sellBuildingRefund(game, spaceIndex, rules)
   let houses = deed.houses
   let hotel = deed.hotel
   if (hotel) {
+    const supply = buildingSupplyLeft(game, rules)
+    const canGive = supply.houses === null ? 4 : Math.min(4, Math.max(0, supply.houses))
     hotel = false
-    houses = 4
+    houses = canGive
   } else {
     houses -= 1
   }
@@ -297,9 +350,9 @@ export function sellAllBuildingsOnColor(
   game: NeighborhoodGame,
   trayId: TrayId,
   group: ColorGroup,
+  rules: NeighborhoodRules,
 ): NeighborhoodGame {
   let next = game
-  // Keep selling highest until bare
   let guard = 0
   while (guard++ < 40) {
     const idxs = groupIndexes(group).filter((i) => {
@@ -313,7 +366,7 @@ export function sellAllBuildingsOnColor(
     })
     counts.sort((a, b) => b.n - a.n)
     const target = counts[0]!.i
-    const sold = applySellBuilding(next, trayId, target)
+    const sold = applySellBuilding(next, trayId, target, rules)
     if (!sold) break
     next = sold
   }
@@ -323,25 +376,49 @@ export function sellAllBuildingsOnColor(
 export function sellAllBuildingsForTray(
   game: NeighborhoodGame,
   trayId: TrayId,
+  rules: NeighborhoodRules,
 ): NeighborhoodGame {
   let next = game
   for (const group of Object.keys(COLOR_GROUPS) as ColorGroup[]) {
-    if (ownsEntireColor(next, trayId, group) || groupIndexes(group).some((i) => next.deeds[i]?.ownerTrayId === trayId)) {
-      next = sellAllBuildingsOnColor(next, trayId, group)
+    if (
+      ownsEntireColor(next, trayId, group) ||
+      groupIndexes(group).some((i) => next.deeds[i]?.ownerTrayId === trayId)
+    ) {
+      next = sellAllBuildingsOnColor(next, trayId, group, rules)
     }
   }
-  // Also sell orphans
   for (const [idx, d] of Object.entries(next.deeds)) {
     if (d.ownerTrayId !== trayId) continue
-    while (d.hotel || d.houses > 0) {
-      const sold = applySellBuilding(next, trayId, Number(idx))
+    let guard = 0
+    while ((next.deeds[Number(idx)]!.hotel || next.deeds[Number(idx)]!.houses > 0) && guard++ < 20) {
+      const sold = applySellBuilding(next, trayId, Number(idx), rules)
       if (!sold) break
       next = sold
-      d.hotel = next.deeds[Number(idx)]!.hotel
-      d.houses = next.deeds[Number(idx)]!.houses
     }
   }
   return next
+}
+
+/** Equity for first-bankruptcy scoring. */
+export function trayEquity(game: NeighborhoodGame, trayId: TrayId): number {
+  const tray = game.trays[trayId]
+  if (!tray) return 0
+  let total = tray.cash
+  for (const [idx, d] of Object.entries(game.deeds)) {
+    if (d.ownerTrayId !== trayId) continue
+    const i = Number(idx)
+    const s = spaceAt(i)
+    if (!isDeedSpace(s)) continue
+    if (d.mortgaged) total += s.mortgage
+    else {
+      total += s.price
+      if (s.kind === 'property') {
+        if (d.hotel) total += s.houseCost * 5
+        else total += s.houseCost * d.houses
+      }
+    }
+  }
+  return total
 }
 
 void BOARD

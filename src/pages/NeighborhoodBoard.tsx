@@ -36,17 +36,22 @@ function shortName(name: string): string {
 export function NeighborhoodBoard(props: {
   game: NeighborhoodGame
   jackpotEnabled: boolean
+  /** While a step cinematic plays, show this tray on `to` instead of final position. */
+  stepVisual?: { trayId: string; to: number } | null
 }) {
-  const { game, jackpotEnabled } = props
+  const { game, jackpotEnabled, stepVisual } = props
   const pot = jackpotFaceLabel(game.jackpot)
 
   return (
     <div className="nb-square-board" role="grid" aria-label="Neighborhood board">
       {BOARD.map((space) => {
         const { col, row } = cellForIndex(space.index)
-        const here = Object.values(game.trays).filter(
-          (t) => !t.spectating && !t.bankrupt && t.position === space.index,
-        )
+        const here = Object.values(game.trays).filter((t) => {
+          if (t.spectating || t.bankrupt) return false
+          const pos =
+            stepVisual && stepVisual.trayId === t.id ? stepVisual.to : t.position
+          return pos === space.index
+        })
         const deed = game.deeds[space.index]
         const ownerPiece = deed?.ownerTrayId
           ? game.trays[deed.ownerTrayId]?.pieceId

@@ -1,4 +1,5 @@
 import { appendCinematic } from './cinematics'
+import { findClosestCover } from './closestCover'
 import { emptyDeed, type NeighborhoodGame, type TrayId } from './gameTypes'
 import {
   applyBuild,
@@ -8,9 +9,16 @@ import {
   bareDeedIndexes,
   deedCreditValue,
   sellAllBuildingsForTray,
+  trayEquity,
 } from './economy'
 import { formatCash } from './money'
-import { STARTING_CASH, type NeighborhoodPieceId, type NeighborhoodRules } from './types'
+import { availableCash, isDeedReserved } from './tradeReserve'
+import {
+  endsOnFirstBankruptcy,
+  STARTING_CASH,
+  type NeighborhoodPieceId,
+  type NeighborhoodRules,
+} from './types'
 import { spaceAt } from './board'
 import { canTapTray, continueAfterResolve, currentTrayId, isOpenJoin } from './engine'
 
@@ -161,9 +169,11 @@ export function applySliceCAction(
       // debtor tray only
       if (action.trayId !== turn) return g
     }
+    if (isDeedReserved(g, action.trayId, action.spaceIndex)) return g
     let next: NeighborhoodGame | null = null
     if (action.type === 'build') next = applyBuild(g, action.trayId, action.spaceIndex, rules)
-    if (action.type === 'sell-building') next = applySellBuilding(g, action.trayId, action.spaceIndex)
+    if (action.type === 'sell-building')
+      next = applySellBuilding(g, action.trayId, action.spaceIndex, rules)
     if (action.type === 'mortgage') next = applyMortgage(g, action.trayId, action.spaceIndex)
     if (action.type === 'unmortgage') next = applyUnmortgage(g, action.trayId, action.spaceIndex, rules)
     if (!next) return g
@@ -182,12 +192,22 @@ export function applySliceCAction(
     if (g.prompt?.type !== 'debt') return g
     if (!canTapTray(g, action.fromId, action.trayId)) return g
     if (action.trayId !== turn) return g
-    const tray = g.trays[action.trayId]!
-    const bare = new Set(bareDeedIndexes(g, action.trayId))
-    const selectedDeeds = action.selectedDeeds.filter((i) => bare.has(i))
+    const cashOnly =
+      g.prompt.toTrayId === 'bank' || g.prompt.toTrayId === 'jackpot'
+    const bare = new Set(
+      cashOnly
+        ? []
+        : bareDeedIndexes(g, action.trayId).filter((i) => !isDeedReserved(g, action.trayId, i)),
+    )
+    const selectedDeeds = cashOnly
+      ? []
+      : action.selectedDeeds.filter((i) => bare.has(i))
     const deedTotal = selectedDeeds.reduce((sum, i) => sum + deedCreditValue(g.deeds[i]!, i), 0)
     const gap = Math.max(0, g.prompt.amount - deedTotal)
-    const cashOffer = Math.max(0, Math.min(action.cashOffer, tray.cash, gap))
+    const cashOffer = Math.max(
+      0,
+      Math.min(action.cashOffer, availableCash(g, action.trayId), gap),
+    )
     return {
       ...g,
       prompt: { ...g.prompt, selectedDeeds, cashOffer },
@@ -199,6 +219,17 @@ export function applySliceCAction(
     if (!canTapTray(g, action.fromId, action.trayId)) return g
     if (action.trayId !== turn) return g
     const prompt = g.prompt
+    const cashOnly = prompt.toTrayId === 'bank' || prompt.toTrayId === 'jackpot'
+    if (cashOnly) {
+      if (availableCash(g, action.trayId) < prompt.amount) return g
+      return settleDebt(
+        g,
+        action.trayId,
+        { ...prompt, selectedDeeds: [], cashOffer: prompt.amount },
+        names,
+        rules,
+      )
+    }
     const cover = debtCoverage(g, action.trayId, prompt.selectedDeeds, prompt.cashOffer)
     if (cover < prompt.amount) return g
     return settleDebt(g, action.trayId, prompt, names, rules)
@@ -244,18 +275,30 @@ export function applySliceCAction(
       (!p.frozen && p.awaitingTrayId == null && action.trayId === p.fromTrayId) ||
       (!p.frozen && p.awaitingTrayId === p.fromTrayId && action.trayId === p.toTrayId)
     if (!drafting) return g
+    const from = g.trays[p.fromTrayId]!
+    const to = g.trays[p.toTrayId]!
+    const offerDeeds = action.offerDeeds.filter(
+      (i) => bareDeedIndexes(g, p.fromTrayId).includes(i),
+    )
+    const askDeeds = action.askDeeds.filter((i) => bareDeedIndexes(g, p.toTrayId).includes(i))
     return {
       ...g,
       prompt: {
         ...p,
-        offerCash: Math.max(0, action.offerCash),
-        offerDeeds: action.offerDeeds,
-        offerJailFreeWild: Math.max(0, action.offerJailFreeWild),
-        offerJailFreeNeighbor: Math.max(0, action.offerJailFreeNeighbor),
-        askCash: Math.max(0, action.askCash),
-        askDeeds: action.askDeeds,
-        askJailFreeWild: Math.max(0, action.askJailFreeWild),
-        askJailFreeNeighbor: Math.max(0, action.askJailFreeNeighbor),
+        offerCash: Math.max(0, Math.min(action.offerCash, from.cash)),
+        offerDeeds,
+        offerJailFreeWild: Math.max(0, Math.min(action.offerJailFreeWild, from.jailFreeWild)),
+        offerJailFreeNeighbor: Math.max(
+          0,
+          Math.min(action.offerJailFreeNeighbor, from.jailFreeNeighbor),
+        ),
+        askCash: Math.max(0, Math.min(action.askCash, to.cash)),
+        askDeeds,
+        askJailFreeWild: Math.max(0, Math.min(action.askJailFreeWild, to.jailFreeWild)),
+        askJailFreeNeighbor: Math.max(
+          0,
+          Math.min(action.askJailFreeNeighbor, to.jailFreeNeighbor),
+        ),
       },
     }
   }
@@ -332,7 +375,11 @@ function settleDebt(
   if (!prompt) return game
   let next = game
   const tray = next.trays[trayId]!
-  const cashPay = Math.min(prompt.cashOffer, tray.cash)
+  const cashOnly = prompt.toTrayId === 'bank' || prompt.toTrayId === 'jackpot'
+  const cashPay = Math.min(
+    cashOnly ? prompt.amount : prompt.cashOffer,
+    availableCash(next, trayId),
+  )
   next = {
     ...next,
     trays: {
@@ -354,13 +401,11 @@ function settleDebt(
   }
 
   const deeds = { ...next.deeds }
-  for (const i of prompt.selectedDeeds) {
-    const d = deeds[i]
-    if (!d || d.ownerTrayId !== trayId) continue
-    if (prompt.toTrayId === 'bank' || prompt.toTrayId === 'jackpot') {
-      deeds[i] = emptyDeed()
-    } else {
-      deeds[i] = { ...d, ownerTrayId: prompt.toTrayId }
+  if (!cashOnly) {
+    for (const i of prompt.selectedDeeds) {
+      const d = deeds[i]
+      if (!d || d.ownerTrayId !== trayId) continue
+      deeds[i] = { ...d, ownerTrayId: prompt.toTrayId as TrayId }
     }
   }
   next = {
@@ -375,6 +420,14 @@ function settleDebt(
   return continueAfterResolve(next)
 }
 
+function winnersByEquityLocal(game: NeighborhoodGame): TrayId[] {
+  const alive = Object.values(game.trays).filter((t) => !t.bankrupt && !t.spectating)
+  if (alive.length === 0) return []
+  const scored = alive.map((t) => ({ id: t.id, eq: trayEquity(game, t.id) }))
+  const best = Math.max(...scored.map((s) => s.eq))
+  return scored.filter((s) => s.eq === best).map((s) => s.id)
+}
+
 function forceBankrupt(
   game: NeighborhoodGame,
   trayId: TrayId,
@@ -382,7 +435,7 @@ function forceBankrupt(
   names: Record<string, string>,
   rules: NeighborhoodRules,
 ): NeighborhoodGame {
-  let next = sellAllBuildingsForTray(game, trayId)
+  let next = sellAllBuildingsForTray(game, trayId, rules)
   const tray = next.trays[trayId]!
   const cash = tray.cash
   if (to !== 'bank' && to !== 'jackpot') {
@@ -435,12 +488,11 @@ function forceBankrupt(
     },
   }
   next = pushLog(next, `${trayName(next, trayId, names)} is out.`)
-  if (rules.stopAtFirstBankruptcy) {
-    const alive = Object.values(next.trays).filter((t) => !t.bankrupt && !t.spectating)
+  if (endsOnFirstBankruptcy(rules)) {
     return {
       ...next,
       phase: 'finished',
-      winnerTrayIds: alive.map((t) => t.id),
+      winnerTrayIds: winnersByEquityLocal(next),
     }
   }
   const alive = Object.values(next.trays).filter((t) => !t.bankrupt && !t.spectating)
@@ -503,58 +555,118 @@ function executeTrade(
   )
 }
 
+function giftRemainder(
+  game: NeighborhoodGame,
+  trayId: TrayId,
+  giftTo: TrayId | 'bank',
+): NeighborhoodGame {
+  const tray = game.trays[trayId]!
+  const cash = tray.cash
+  if (giftTo === 'bank') {
+    const deeds = { ...game.deeds }
+    for (const [idx, d] of Object.entries(deeds)) {
+      if (d.ownerTrayId === trayId) deeds[Number(idx)] = emptyDeed()
+    }
+    let wildDeck = game.wildDeck
+    let neighborDeck = game.neighborDeck
+    for (let i = 0; i < tray.jailFreeWild; i++) wildDeck = [...wildDeck, 7]
+    for (let i = 0; i < tray.jailFreeNeighbor; i++) neighborDeck = [...neighborDeck, 4]
+    return {
+      ...game,
+      deeds,
+      wildDeck,
+      neighborDeck,
+      trays: {
+        ...game.trays,
+        [trayId]: { ...tray, cash: 0, jailFreeWild: 0, jailFreeNeighbor: 0 },
+      },
+    }
+  }
+  const o = game.trays[giftTo]!
+  const deeds = { ...game.deeds }
+  for (const [idx, d] of Object.entries(deeds)) {
+    if (d.ownerTrayId === trayId) deeds[Number(idx)] = { ...d, ownerTrayId: giftTo }
+  }
+  return {
+    ...game,
+    deeds,
+    trays: {
+      ...game.trays,
+      [trayId]: { ...tray, cash: 0, jailFreeWild: 0, jailFreeNeighbor: 0 },
+      [giftTo]: {
+        ...o,
+        cash: o.cash + cash,
+        jailFreeWild: o.jailFreeWild + tray.jailFreeWild,
+        jailFreeNeighbor: o.jailFreeNeighbor + tray.jailFreeNeighbor,
+      },
+    },
+  }
+}
+
 function intentionalLeave(
   game: NeighborhoodGame,
   trayId: TrayId,
   giftTo: TrayId | 'bank',
-  spectate: boolean,
+  _spectate: boolean,
   names: Record<string, string>,
   rules: NeighborhoodRules,
 ): NeighborhoodGame {
-  let next = sellAllBuildingsForTray(game, trayId)
-  // If debt prompt to a seat, settle closest cover first is Slice C lite: force bankrupt path to creditor
-  if (next.prompt?.type === 'debt' && next.prompt.toTrayId !== 'bank' && next.prompt.toTrayId !== 'jackpot') {
-    next = forceBankrupt(next, trayId, next.prompt.toTrayId, names, rules)
-    return next
-  }
-  if (next.prompt?.type === 'debt') {
-    next = forceBankrupt(next, trayId, next.prompt.toTrayId, names, rules)
-    return next
-  }
+  let next = sellAllBuildingsForTray(game, trayId, rules)
 
-  const tray = next.trays[trayId]!
-  const cash = tray.cash
-  if (giftTo === 'bank') {
-    next = { ...next, trays: { ...next.trays, [trayId]: { ...tray, cash: 0 } } }
-    const deeds = { ...next.deeds }
-    for (const [idx, d] of Object.entries(deeds)) {
-      if (d.ownerTrayId === trayId) deeds[Number(idx)] = emptyDeed()
-    }
-    let wildDeck = next.wildDeck
-    let neighborDeck = next.neighborDeck
-    for (let i = 0; i < tray.jailFreeWild; i++) wildDeck = [...wildDeck, 7]
-    for (let i = 0; i < tray.jailFreeNeighbor; i++) neighborDeck = [...neighborDeck, 4]
-    next = { ...next, deeds, wildDeck, neighborDeck }
-  } else {
-    const o = next.trays[giftTo]!
-    next = {
-      ...next,
-      trays: {
-        ...next.trays,
-        [trayId]: { ...tray, cash: 0, jailFreeWild: 0, jailFreeNeighbor: 0 },
-        [giftTo]: {
-          ...o,
-          cash: o.cash + cash,
-          jailFreeWild: o.jailFreeWild + tray.jailFreeWild,
-          jailFreeNeighbor: o.jailFreeNeighbor + tray.jailFreeNeighbor,
+  // Pending debt: settle closest cover (player) or cash-only (bank/jackpot) before any gift
+  if (next.prompt?.type === 'debt') {
+    const debt = next.prompt
+    if (debt.toTrayId === 'bank' || debt.toTrayId === 'jackpot') {
+      // Cash only — take whatever cash remains; deeds never enter the pot
+      const tray = next.trays[trayId]!
+      const cashPay = tray.cash
+      if (debt.toTrayId === 'jackpot' || (debt.toTrayId === 'bank' && rules.jackpot)) {
+        next = { ...next, jackpot: next.jackpot + cashPay }
+      }
+      next = {
+        ...next,
+        trays: { ...next.trays, [trayId]: { ...tray, cash: 0 } },
+        prompt: null,
+      }
+      // Remaining estate returns to board (no gift while quitting on bank debt)
+      next = giftRemainder(next, trayId, 'bank')
+      next = pushLog(
+        next,
+        `${trayName(next, trayId, names)} left owing the bank (${debt.reason}).`,
+      )
+    } else {
+      const plan = findClosestCover(next, trayId, debt.amount)
+      const tray = next.trays[trayId]!
+      const creditor = next.trays[debt.toTrayId]!
+      const cashPay = Math.min(plan.cash, tray.cash)
+      next = {
+        ...next,
+        trays: {
+          ...next.trays,
+          [trayId]: { ...tray, cash: tray.cash - cashPay },
+          [debt.toTrayId]: { ...creditor, cash: creditor.cash + cashPay },
         },
-      },
+      }
+      const deeds = { ...next.deeds }
+      for (const i of plan.deeds) {
+        const d = deeds[i]
+        if (d?.ownerTrayId === trayId) deeds[i] = { ...d, ownerTrayId: debt.toTrayId }
+      }
+      next = { ...next, deeds, prompt: null }
+      next = pushLog(
+        next,
+        `${trayName(next, trayId, names)} covered ${formatCash(debt.amount)} to ${trayName(next, debt.toTrayId, names)} then left.`,
+      )
+      if (plan.stillShort) {
+        // Creditor already got everything transferable; clear leftovers to bank
+        next = giftRemainder(next, trayId, 'bank')
+      } else {
+        next = giftRemainder(next, trayId, giftTo)
+      }
     }
-    const deeds = { ...next.deeds }
-    for (const [idx, d] of Object.entries(deeds)) {
-      if (d.ownerTrayId === trayId) deeds[Number(idx)] = { ...d, ownerTrayId: giftTo }
-    }
-    next = { ...next, deeds }
+  } else {
+    next = giftRemainder(next, trayId, giftTo)
+    next = pushLog(next, `${trayName(next, trayId, names)} left the game.`)
   }
 
   next = {
@@ -564,29 +676,26 @@ function intentionalLeave(
       ...next.trays,
       [trayId]: {
         ...next.trays[trayId]!,
-        spectating: spectate || true,
-        bankrupt: !spectate ? true : next.trays[trayId]!.bankrupt,
-      },
-    },
-  }
-  // Always spectate for leave mid-game (Home is client navigate)
-  next = {
-    ...next,
-    trays: {
-      ...next.trays,
-      [trayId]: {
-        ...next.trays[trayId]!,
         spectating: true,
         bankrupt: true,
+        cash: 0,
+        jailFreeWild: 0,
+        jailFreeNeighbor: 0,
       },
     },
   }
-  next = pushLog(next, `${trayName(next, trayId, names)} left the game.`)
+
+  if (endsOnFirstBankruptcy(rules)) {
+    return {
+      ...next,
+      phase: 'finished',
+      winnerTrayIds: winnersByEquityLocal(next),
+    }
+  }
   const alive = Object.values(next.trays).filter((t) => !t.bankrupt && !t.spectating)
   if (alive.length <= 1) {
     return { ...next, phase: 'finished', winnerTrayIds: alive.map((t) => t.id) }
   }
-  // If it was their turn, clear prompt already — turn advances on next end; force skip if current
   const cur = currentTrayId(next)
   if (cur === trayId) {
     const order = next.turnOrder.filter((id) => next.trays[id] && !next.trays[id]!.spectating)
@@ -595,7 +704,6 @@ function intentionalLeave(
       next = { ...next, turnIndex: idx >= 0 ? idx : next.turnIndex }
     }
   }
-  void rules
   return next
 }
 

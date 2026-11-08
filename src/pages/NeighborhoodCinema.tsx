@@ -12,9 +12,11 @@ import type { NeighborhoodRoom } from '../rooms/types'
 
 const DUR: Record<NbCinematic['kind'], number> = {
   dice: 900,
-  step: 700,
+  step: 280,
   pay: 1100,
+  'pay-each': 1400,
   collect: 1200,
+  'collect-each': 1400,
   buy: 1000,
   card: 1400,
   jail: 1000,
@@ -55,10 +57,48 @@ function perspectiveToast(
       mood: 'info',
     }
   }
+  if (cine.kind === 'pay-each') {
+    const amt = formatCash(cine.amountEach)
+    if (cine.fromTrayId === myTrayId) {
+      return {
+        text: `You paid ${amt} to each of ${cine.toTrayIds.length}.`,
+        mood: 'paid',
+      }
+    }
+    if (cine.toTrayIds.includes(myTrayId)) {
+      return {
+        text: `${nameOf(cine.fromTrayId)} paid you ${amt}.`,
+        mood: 'collected',
+      }
+    }
+    return {
+      text: `${nameOf(cine.fromTrayId)} treated the table (${amt} each).`,
+      mood: 'info',
+    }
+  }
   if (cine.kind === 'collect' && cine.trayId === myTrayId) {
     return {
       text: `You collected ${formatCash(cine.amount)}${cine.reason ? ` · ${cine.reason}` : ''}.`,
       mood: 'collected',
+    }
+  }
+  if (cine.kind === 'collect-each') {
+    const amt = formatCash(cine.amountEach)
+    if (cine.trayId === myTrayId) {
+      return {
+        text: `You collected ${amt} from each of ${cine.fromTrayIds.length}.`,
+        mood: 'collected',
+      }
+    }
+    if (cine.fromTrayIds.includes(myTrayId)) {
+      return {
+        text: `You paid ${nameOf(cine.trayId)} ${amt}.`,
+        mood: 'paid',
+      }
+    }
+    return {
+      text: `${nameOf(cine.trayId)} collected from the table.`,
+      mood: 'info',
     }
   }
   return null
@@ -72,8 +112,9 @@ export function NeighborhoodCinema(props: {
   room: NeighborhoodRoom
   playerId: string
   pauseQueue: boolean
+  onActiveChange?: (cine: NbCinematic | null) => void
 }) {
-  const { room, playerId, pauseQueue } = props
+  const { room, playerId, pauseQueue, onActiveChange } = props
   const game = room.game
   const seenRef = useRef(0)
   const bootstrapped = useRef(false)
@@ -111,6 +152,10 @@ export function NeighborhoodCinema(props: {
   }, [queue, active, pauseQueue])
 
   useEffect(() => {
+    onActiveChange?.(active)
+  }, [active, onActiveChange])
+
+  useEffect(() => {
     if (!active) return
     void playNeighborhoodCue(active.kind)
     const ms = DUR[active.kind] ?? 900
@@ -129,14 +174,28 @@ export function NeighborhoodCinema(props: {
   const bills =
     active.kind === 'pay' || active.kind === 'collect'
       ? breakIntoBills(active.amount)
-      : []
+      : active.kind === 'pay-each' || active.kind === 'collect-each'
+        ? breakIntoBills(active.amountEach)
+        : []
 
   const payMine = active.kind === 'pay' && active.fromTrayId === myTrayId
+  const payEachMine = active.kind === 'pay-each' && active.fromTrayId === myTrayId
   const collectMine = active.kind === 'collect' && active.trayId === myTrayId
+  const collectEachMine = active.kind === 'collect-each' && active.trayId === myTrayId
   const bystanderPay =
-    active.kind === 'pay' &&
-    active.fromTrayId !== myTrayId &&
-    active.toTrayId !== myTrayId
+    (active.kind === 'pay' &&
+      active.fromTrayId !== myTrayId &&
+      active.toTrayId !== myTrayId) ||
+    (active.kind === 'pay-each' &&
+      active.fromTrayId !== myTrayId &&
+      !active.toTrayIds.includes(myTrayId))
+
+  const streamCount =
+    active.kind === 'pay-each'
+      ? active.toTrayIds.length
+      : active.kind === 'collect-each'
+        ? active.fromTrayIds.length
+        : 1
 
   return (
     <div className="nb-cinema" aria-live="polite">
@@ -149,7 +208,7 @@ export function NeighborhoodCinema(props: {
 
       {active.kind === 'step' ? (
         <div className="nb-cinema-step">
-          Stepping {active.from} → {active.to}
+          {spaceAt(active.to).name}
         </div>
       ) : null}
 
@@ -175,17 +234,22 @@ export function NeighborhoodCinema(props: {
 
       {bills.length > 0 ? (
         <div
-          className={`nb-bills ${payMine ? 'leave' : ''} ${collectMine ? 'arrive' : ''} ${bystanderPay ? 'bystander' : ''}`}
+          className={`nb-bills ${payMine || payEachMine ? 'leave' : ''} ${collectMine || collectEachMine ? 'arrive' : ''} ${bystanderPay ? 'bystander' : ''} ${payEachMine || collectEachMine ? 'split' : ''}`}
         >
-          {bills.map((d, i) => (
-            <span
-              key={`${active.id}-${i}`}
-              className="nb-bill"
-              style={{ animationDelay: `${i * 0.05}s` }}
-            >
-              {formatCash(d)}
-            </span>
-          ))}
+          {Array.from({ length: Math.min(streamCount, 4) }, (_, stream) =>
+            bills.map((d, i) => (
+              <span
+                key={`${active.id}-${stream}-${i}`}
+                className="nb-bill"
+                style={{
+                  animationDelay: `${stream * 0.08 + i * 0.04}s`,
+                  ['--nb-stream' as string]: String(stream - (streamCount - 1) / 2),
+                }}
+              >
+                {formatCash(d)}
+              </span>
+            )),
+          )}
         </div>
       ) : null}
 

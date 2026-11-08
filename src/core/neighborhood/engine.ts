@@ -20,7 +20,11 @@ import {
 } from './gameTypes'
 import { ceilToThousand, formatCash } from './money'
 import { freshDeck, rollTwoDice } from './rng'
+import { trayEquity } from './economy'
+import { dealStartingDeeds } from './startingDeeds'
+import { availableCash, reservedForTray } from './tradeReserve'
 import {
+  endsOnFirstBankruptcy,
   STARTING_CASH,
   type NeighborhoodPieceId,
   type NeighborhoodRules,
@@ -119,11 +123,12 @@ function tryDebit(
   to: TrayId | 'bank' | 'jackpot',
   reason: string,
   rules: NeighborhoodRules,
+  opts?: { silent?: boolean },
 ): { game: NeighborhoodGame; paid: boolean } {
   if (amount <= 0) return { game, paid: true }
   const t = game.trays[trayId]
   if (!t) return { game, paid: true }
-  if (t.cash >= amount) {
+  if (availableCash(game, trayId) >= amount) {
     let next: NeighborhoodGame = {
       ...game,
       trays: {
@@ -136,14 +141,16 @@ function tryDebit(
     } else if (to !== 'bank') {
       next = credit(next, to, amount)
     }
-    const tone = /rent/i.test(reason) ? 'short' : 'long'
-    next = withMovie(next, {
-      kind: 'pay',
-      fromTrayId: trayId,
-      toTrayId: to === 'bank' && rules.jackpot ? 'jackpot' : to,
-      amount,
-      tone,
-    })
+    if (!opts?.silent) {
+      const tone = /rent/i.test(reason) ? 'short' : 'long'
+      next = withMovie(next, {
+        kind: 'pay',
+        fromTrayId: trayId,
+        toTrayId: to === 'bank' && rules.jackpot ? 'jackpot' : to,
+        amount,
+        tone,
+      })
+    }
     return { game: next, paid: true }
   }
   // Slice B: open debt prompt (full mortgage/sell UI in Slice C)
@@ -256,7 +263,12 @@ function moveForward(
       [trayId]: { ...t, position: dest, cash },
     },
   }
-  next = withMovie(next, { kind: 'step', trayId, from, to: dest })
+  // One cinematic per space so clients can step the piece
+  for (let i = 1; i <= steps; i++) {
+    const a = (from + i - 1) % 40
+    const b = (from + i) % 40
+    next = withMovie(next, { kind: 'step', trayId, from: a, to: b })
+  }
   if (homeCollect > 0) {
     next = withMovie(next, {
       kind: 'collect',
@@ -414,6 +426,15 @@ export function initNeighborhoodGame(
   }
 }
 
+/** Rank remaining seats by equity (cash + deeds + builds). Highest wins. */
+export function winnersByEquity(game: NeighborhoodGame): TrayId[] {
+  const alive = aliveTrays(game)
+  if (alive.length === 0) return []
+  const scored = alive.map((t) => ({ id: t.id, eq: trayEquity(game, t.id) }))
+  const best = Math.max(...scored.map((s) => s.eq))
+  return scored.filter((s) => s.eq === best).map((s) => s.id)
+}
+
 function finishIfNeeded(game: NeighborhoodGame, rules: NeighborhoodRules): NeighborhoodGame {
   const alive = aliveTrays(game)
   if (alive.length <= 1) {
@@ -426,6 +447,15 @@ function finishIfNeeded(game: NeighborhoodGame, rules: NeighborhoodRules): Neigh
   }
   void rules
   return game
+}
+
+function finishOnFirstBankruptcy(game: NeighborhoodGame): NeighborhoodGame {
+  return {
+    ...game,
+    phase: 'finished',
+    prompt: null,
+    winnerTrayIds: winnersByEquity(game),
+  }
 }
 
 function endTurn(game: NeighborhoodGame): NeighborhoodGame {
@@ -669,9 +699,20 @@ function applyCardEffect(
       case 14: {
         const others = aliveTrays(next).filter((o) => o.id !== trayId && !allied(rules, next.trays[trayId]!, o))
         for (const o of others) {
-          const r = tryDebit(next, trayId, 50_000, o.id, 'Treat the table', rules)
+          const r = tryDebit(next, trayId, 50_000, o.id, 'Treat the table', rules, {
+            silent: true,
+          })
           next = r.game
           if (!r.paid) return returnCard(next, deck, cardIndex)
+        }
+        if (others.length > 0) {
+          next = withMovie(next, {
+            kind: 'pay-each',
+            fromTrayId: trayId,
+            toTrayIds: others.map((o) => o.id),
+            amountEach: 50_000,
+            tone: 'long',
+          })
         }
         next = pushLog(next, `${label} treated the table.`)
         break
@@ -714,12 +755,22 @@ function applyCardEffect(
       case 8: {
         const others = aliveTrays(next).filter((o) => o.id !== trayId && !allied(rules, next.trays[trayId]!, o))
         for (const o of others) {
-          const r = tryDebit(next, o.id, 10_000, trayId, 'Your day', rules)
+          const r = tryDebit(next, o.id, 10_000, trayId, 'Your day', rules, { silent: true })
           next = r.game
           if (!r.paid) {
             // if payer can't, leave debt on them — rare in opening
             return returnCard(next, deck, cardIndex)
           }
+        }
+        if (others.length > 0) {
+          next = withMovie(next, {
+            kind: 'collect-each',
+            trayId,
+            fromTrayIds: others.map((o) => o.id),
+            amountEach: 10_000,
+            tone: 'long',
+            reason: 'Your day',
+          })
         }
         break
       }
@@ -826,17 +877,16 @@ export function applyNeighborhoodGameAction(
     const order = Object.keys(next.trays)
     const startIdx = order.indexOf(start)
     const turnOrder = [...order.slice(startIdx), ...order.slice(0, startIdx)]
-    return pushLog(
-      {
-        ...next,
-        phase: 'playing',
-        turnOrder,
-        turnIndex: 0,
-        openingNeeds: [],
-        lastDice: null,
-      },
-      `${trayName(next, start, names)} goes first.`,
-    )
+    let playing: NeighborhoodGame = {
+      ...next,
+      phase: 'playing',
+      turnOrder,
+      turnIndex: 0,
+      openingNeeds: [],
+      lastDice: null,
+    }
+    playing = dealStartingDeeds(playing, rules, names)
+    return pushLog(playing, `${trayName(playing, start, names)} goes first.`)
   }
 
   if (game.phase !== 'playing') return game
@@ -1051,11 +1101,14 @@ function handleJailChoice(
   const label = trayName(game, trayId, names)
 
   if (choice === 'card') {
-    if (t.jailFreeWild + t.jailFreeNeighbor <= 0) return game
+    const reserved = reservedForTray(game, trayId)
+    const freeWild = t.jailFreeWild - reserved.jailFreeWild
+    const freeNeighbor = t.jailFreeNeighbor - reserved.jailFreeNeighbor
+    if (freeWild + freeNeighbor <= 0) return game
     let trays = { ...game.trays }
     let wildDeck = game.wildDeck
     let neighborDeck = game.neighborDeck
-    if (t.jailFreeWild > 0) {
+    if (freeWild > 0) {
       trays[trayId] = { ...t, jailFreeWild: t.jailFreeWild - 1, inJail: false, jailTurns: 0 }
       wildDeck = [...wildDeck, 7]
     } else {
@@ -1141,22 +1194,32 @@ function bankruptTray(
       next = credit(next, to, cash)
     }
   }
-  // Return deeds to bank (Slice B); player debts to seats get cash only here
   const deeds = { ...next.deeds }
   for (const [idx, d] of Object.entries(deeds)) {
-    if (d.ownerTrayId === trayId) {
+    if (d.ownerTrayId !== trayId) continue
+    if (to !== 'bank' && to !== 'jackpot') {
+      deeds[Number(idx)] = { ...d, ownerTrayId: to }
+    } else {
       deeds[Number(idx)] = emptyDeed()
     }
   }
+  let wildDeck = next.wildDeck
+  let neighborDeck = next.neighborDeck
+  for (let i = 0; i < t.jailFreeWild; i++) wildDeck = [...wildDeck, 7]
+  for (let i = 0; i < t.jailFreeNeighbor; i++) neighborDeck = [...neighborDeck, 4]
   next = {
     ...next,
     prompt: null,
     deeds,
+    wildDeck,
+    neighborDeck,
     trays: {
       ...next.trays,
       [trayId]: {
         ...t,
         cash: 0,
+        jailFreeWild: 0,
+        jailFreeNeighbor: 0,
         bankrupt: true,
         spectating: true,
         inJail: false,
@@ -1165,13 +1228,8 @@ function bankruptTray(
     },
   }
   next = pushLog(next, `${trayName(next, trayId, names)} is out.`)
-  if (rules.stopAtFirstBankruptcy) {
-    const alive = aliveTrays(next)
-    return {
-      ...next,
-      phase: 'finished',
-      winnerTrayIds: alive.map((x) => x.id),
-    }
+  if (endsOnFirstBankruptcy(rules)) {
+    return finishOnFirstBankruptcy(next)
   }
-  return next
+  return finishIfNeeded(next, rules)
 }

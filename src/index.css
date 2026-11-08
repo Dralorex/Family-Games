@@ -1376,6 +1376,44 @@ button {
 .nb-bills.bystander .nb-bill {
   animation: nb-bill-by 0.95s ease-in-out forwards;
 }
+.nb-bills.split.leave .nb-bill {
+  animation: nb-bill-split-out 1.1s ease-in forwards;
+}
+.nb-bills.split.arrive .nb-bill {
+  animation: nb-bill-split-in 1.1s ease-out forwards;
+}
+
+@keyframes nb-bill-split-out {
+  to {
+    transform: translate(calc(var(--nb-stream, 0) * 42px), -55%) scale(0.35);
+    opacity: 0;
+  }
+}
+@keyframes nb-bill-split-in {
+  from {
+    transform: translate(calc(var(--nb-stream, 0) * 36px), -70%) scale(0.4);
+    opacity: 0;
+  }
+  to { transform: none; opacity: 1; }
+}
+
+.nb-spectating-banner {
+  margin: 0 0 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  font-weight: 700;
+  text-align: center;
+  background: color-mix(in srgb, var(--muted, #888) 22%, transparent);
+}
+
+.nb-spectating-label {
+  margin: 0 0 0.2rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #666);
+}
 
 @keyframes nb-bill-out {
   to { transform: translateY(-50%) scale(0.4); opacity: 0; }
