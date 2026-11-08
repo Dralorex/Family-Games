@@ -1425,3 +1425,186 @@ button {
   from { transform: translateY(8px); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
+
+/* 2D Neighborhood board */
+.nb-square-board {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  grid-template-rows: repeat(11, minmax(0, 1fr));
+  gap: 2px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  aspect-ratio: 1 / 1;
+  padding: 2px;
+  background: color-mix(in srgb, var(--ink, #222) 12%, transparent);
+  border-radius: 12px;
+}
+
+.nb-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 1px;
+  padding: 2px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #f7f3ea;
+  color: #1a1a1a;
+  font-size: clamp(0.42rem, 1.6vw, 0.58rem);
+  line-height: 1.1;
+  border-radius: 3px;
+}
+
+.nb-cell.corner {
+  font-weight: 700;
+  font-size: clamp(0.48rem, 1.8vw, 0.65rem);
+}
+
+.nb-cell-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-cell-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0.9;
+}
+
+.nb-cell-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin-top: auto;
+}
+
+.nb-cell.has-token {
+  outline: 2px solid color-mix(in srgb, var(--accent, #c45) 70%, #000);
+  outline-offset: -1px;
+  z-index: 1;
+}
+
+.nb-cell.grp-pebble { background: #c4a484; }
+.nb-cell.grp-creek { background: #7eb6d9; }
+.nb-cell.grp-garden { background: #d98bb0; }
+.nb-cell.grp-market { background: #e0a35a; }
+.nb-cell.grp-harbor { background: #d94c4c; }
+.nb-cell.grp-meadow { background: #f0d65a; }
+.nb-cell.grp-forest { background: #5a9e6a; }
+.nb-cell.grp-crown { background: #4a6fa5; color: #f5f5f5; }
+.nb-cell.grp-line { background: #2c2c2c; color: #f5f5f5; }
+.nb-cell.grp-works { background: #8a8a8a; }
+.nb-cell.grp-home { background: #e8f0e0; }
+.nb-cell.grp-jail { background: #d8cfc0; }
+.nb-cell.grp-square { background: #e8dcc8; }
+.nb-cell.grp-goto { background: #3a3a3a; color: #f5f5f5; }
+.nb-cell.grp-fee { background: #c9b8a0; }
+.nb-cell.grp-wild { background: #f0c070; }
+.nb-cell.grp-neighbor { background: #70b0d0; }
+
+.nb-board-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem;
+  background: linear-gradient(160deg, #e9f2e4 0%, #f6efe4 55%, #e8e0d4 100%);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.nb-center-title {
+  margin: 0;
+  font-size: clamp(0.85rem, 3vw, 1.15rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.nb-center-hint {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.nb-jackpot-face {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: center;
+}
+
+.nb-jackpot-bill {
+  min-width: 5.5rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: #1f6b3a;
+  color: #f4fff6;
+  border: 2px solid #0d3d1f;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  display: grid;
+  gap: 0.15rem;
+  justify-items: center;
+}
+
+.nb-jackpot-bill-face {
+  font-weight: 800;
+  font-size: clamp(0.85rem, 3vw, 1.1rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-jackpot-bill-tag {
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.nb-jackpot-digits {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+.nb-center-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.55rem;
+  max-width: 100%;
+}
+
+.nb-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.65rem;
+  color: var(--muted, #555);
+}
+
+.nb-score-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+@media (max-width: 420px) {
+  .nb-square-board {
+    max-width: 100%;
+  }
+  .nb-cell-name {
+    font-size: 0.4rem;
+  }
+}
+
+.piece-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}

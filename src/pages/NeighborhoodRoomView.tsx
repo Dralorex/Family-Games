@@ -21,6 +21,7 @@ import type { NeighborhoodRoom } from '../rooms/types'
 import { useRoom } from '../hooks/useRoom'
 import { trayIdForPlayer } from '../core/neighborhood/engine'
 import { NeighborhoodManagePanel } from './NeighborhoodManagePanel'
+import { NeighborhoodPieceIcon } from './NeighborhoodPieceIcon'
 import { NeighborhoodPlayPanel, NeighborhoodScorePanel } from './NeighborhoodPlayPanel'
 
 function formatGrace(ms: number) {
@@ -327,10 +328,11 @@ export function NeighborhoodRoomView(props: {
                 <button
                   key={id}
                   type="button"
-                  className={`chip ${myPiece === id ? 'selected' : ''}`}
+                  className={`chip piece-chip ${myPiece === id ? 'selected' : ''}`}
                   disabled={taken || Boolean(me?.left)}
                   onClick={() => pickPiece(id)}
                 >
+                  <NeighborhoodPieceIcon pieceId={id} size={18} />
                   {PIECE_LABELS[id]}
                 </button>
               )

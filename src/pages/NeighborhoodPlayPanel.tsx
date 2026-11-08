@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BOARD, spaceAt } from '../core/neighborhood/board'
+import { spaceAt } from '../core/neighborhood/board'
 import { bareDeedIndexes, deedCreditValue } from '../core/neighborhood/economy'
 import {
   canTapTray,
@@ -9,9 +9,11 @@ import {
 import { formatCash } from '../core/neighborhood/money'
 import { PIECE_LABELS } from '../core/neighborhood/types'
 import type { NeighborhoodRoom } from '../rooms/types'
+import { NeighborhoodPieceIcon } from './NeighborhoodPieceIcon'
 import type { useRoom } from '../hooks/useRoom'
-import { NeighborhoodCinema, shouldPauseCinema } from './NeighborhoodCinema'
 import { unlockAudio } from '../audio/neighborhood'
+import { NeighborhoodBoard } from './NeighborhoodBoard'
+import { NeighborhoodCinema, shouldPauseCinema } from './NeighborhoodCinema'
 
 function trayLabel(room: NeighborhoodRoom, trayId: string): string {
   const t = room.game?.trays[trayId]
@@ -91,37 +93,7 @@ export function NeighborhoodPlayPanel(props: {
             {turnId === myTrayId ? ' (you)' : ''}
           </p>
 
-          <div className="nb-board" role="list">
-            {BOARD.map((space) => {
-              const here = Object.values(game.trays).filter(
-                (t) => !t.spectating && t.position === space.index,
-              )
-              const deed = game.deeds[space.index]
-              const owner = deed?.ownerTrayId
-              return (
-                <div
-                  key={space.index}
-                  className={`nb-space ${here.length ? 'occupied' : ''}`}
-                  role="listitem"
-                >
-                  <span className="nb-space-idx">{space.index}</span>
-                  <span className="nb-space-name">{space.name}</span>
-                  {owner ? (
-                    <span className="nb-space-owner">
-                      {PIECE_LABELS[game.trays[owner]!.pieceId]}
-                      {deed?.mortgaged ? ' · mort' : ''}
-                      {deed?.hotel ? ' · hotel' : deed && deed.houses > 0 ? ` · h${deed.houses}` : ''}
-                    </span>
-                  ) : null}
-                  {here.length > 0 ? (
-                    <span className="nb-tokens">
-                      {here.map((t) => PIECE_LABELS[t.pieceId]).join(' · ')}
-                    </span>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
+          <NeighborhoodBoard game={game} jackpotEnabled={room.rules.jackpot} />
 
           <div className="nb-actions">
             {prompt?.type === 'buy' && myTurn ? (
@@ -457,16 +429,17 @@ export function NeighborhoodScorePanel(props: { room: NeighborhoodRoom }) {
   return (
     <ul className="player-list">
       {trays.map((t) => (
-        <li key={t.id}>
-          {t.memberIds.map((id) => props.room.players[id]?.name ?? '?').join(' & ')}
-          {' · '}
-          {PIECE_LABELS[t.pieceId]}
-          {' · '}
-          {formatCash(t.cash)}
-          {t.inJail ? ' · jail' : ''}
-          {t.spectating ? ' · out' : ''}
-          {' · '}
-          {spaceAt(t.position).name}
+        <li key={t.id} className="nb-score-row">
+          <NeighborhoodPieceIcon pieceId={t.pieceId} size={18} title={PIECE_LABELS[t.pieceId]} />
+          <span>
+            {t.memberIds.map((id) => props.room.players[id]?.name ?? '?').join(' & ')}
+            {' · '}
+            {formatCash(t.cash)}
+            {t.inJail ? ' · jail' : ''}
+            {t.spectating ? ' · out' : ''}
+            {' · '}
+            {spaceAt(t.position).name}
+          </span>
         </li>
       ))}
       {props.room.rules.jackpot ? <li>Jackpot · {formatCash(game.jackpot)}</li> : null}

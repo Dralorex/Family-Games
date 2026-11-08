@@ -40,6 +40,8 @@ export const UPDATES: UpdateNotes[] = [
       'Late join: open during first round, then owner Accept/Decline (cash only)',
       'Per-client animation queue (dice, steps, bills, cards) with seat cameras',
       'Matching Web Audio cues; Settings mute; refresh skips movies',
+      '2D square board with color spaces and original SVG piece tokens',
+      'Town Square jackpot costume bill face + climbing digit total',
     ],
     updated: [
       'Games hub lists Neighborhood beside Hot Potato',
