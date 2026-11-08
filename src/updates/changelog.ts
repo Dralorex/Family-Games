@@ -24,6 +24,16 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.15',
+    pr: 15,
+    title: 'Fix MQTT progress scoring after Neighborhood',
+    added: [],
+    updated: [
+      'Room sync progress scoring narrows by game kind so Neighborhood builds typecheck',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.14',
     pr: 14,
     title: 'Neighborhood full multiplayer game',

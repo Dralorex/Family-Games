@@ -38,9 +38,19 @@ const STATUS_RANK: Record<RoomState['status'], number> = {
 }
 
 function scorecardProgress(state: RoomState): number {
-  if (state.kind !== 'scorecard') {
-    const hp = state
-    return STATUS_RANK[hp.status] * 1_000_000 + hp.placements.length * 100 + (50 - hp.aliveIds.length)
+  if (state.kind === 'hot-potato') {
+    return (
+      STATUS_RANK[state.status] * 1_000_000 +
+      state.placements.length * 100 +
+      (50 - state.aliveIds.length)
+    )
+  }
+  if (state.kind === 'neighborhood') {
+    const game = state.game
+    const eventId = game?.lastEventId ?? 0
+    const turns = game?.turnsTaken ?? 0
+    const trays = game ? Object.keys(game.trays).length : 0
+    return STATUS_RANK[state.status] * 1_000_000 + turns * 10_000 + eventId * 10 + trays
   }
   let scoreCells = 0
   for (const roundMap of Object.values(state.scores)) {
