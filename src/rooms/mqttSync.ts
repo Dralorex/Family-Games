@@ -38,7 +38,7 @@ const STATUS_RANK: Record<RoomState['status'], number> = {
 }
 
 function scorecardProgress(state: RoomState): number {
-  if (state.kind === 'hotpotato') {
+  if (state.kind === 'hot-potato') {
     return (
       STATUS_RANK[state.status] * 1_000_000 +
       state.placements.length * 100 +
