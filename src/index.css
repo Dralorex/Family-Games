@@ -1138,3 +1138,42 @@ button {
   width: 100%;
   margin-top: 0.25rem;
 }
+
+/* Neighborhood Slice A */
+.section-heading {
+  margin: 1.1rem 0 0.45rem;
+  font-size: 0.95rem;
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0.45rem 0;
+  font-size: 0.95rem;
+}
+
+.check-row input {
+  margin-top: 0.2rem;
+}
+
+.warn-banner {
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.piece-row {
+  flex-wrap: wrap;
+}
+
+.player-list li.left-player {
+  opacity: 0.55;
+}
+
+.neighborhood-placeholder {
+  margin-top: 0.5rem;
+}

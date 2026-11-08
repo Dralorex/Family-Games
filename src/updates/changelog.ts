@@ -24,6 +24,21 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.14',
+    pr: 14,
+    title: 'Neighborhood lobby shell (Slice A)',
+    added: [
+      'Neighborhood under Games — create room with locked house rules',
+      'Lobby seating: original pieces, Solo / Shared tray / Alliance styles',
+      'Disconnect grace minutes tunable at create (default 5)',
+      'Owner-away countdown banner using existing claim-host handoff',
+    ],
+    updated: [
+      'Games hub lists Neighborhood beside Hot Potato',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.12',
     pr: 12,
     title: 'In-app update notes',

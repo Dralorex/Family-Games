@@ -1,4 +1,12 @@
 import {
+  allianceGroupIds,
+  allianceGroupSize,
+  maxPhonesForRules,
+  NEIGHBORHOOD_PIECES,
+  SHARED_TRAY_IDS,
+  type NeighborhoodPieceId,
+} from '../core/neighborhood/types'
+import {
   allScoresEntered,
   lastPlacePlayerId,
   nameTaken,
@@ -6,7 +14,14 @@ import {
   worstScoreForRound,
 } from '../core/score/engine'
 import { endTimer, isExpired, resetTimer, startTimer } from '../core/timer/engine'
-import type { HotPotatoRoom, RoomAction, RoomPlayer, RoomState, ScorecardRoom } from './types'
+import type {
+  HotPotatoRoom,
+  NeighborhoodRoom,
+  RoomAction,
+  RoomPlayer,
+  RoomState,
+  ScorecardRoom,
+} from './types'
 
 function playersList(room: RoomState) {
   return Object.values(room.players).sort((a, b) => a.joinedAt - b.joinedAt)
@@ -184,7 +199,7 @@ function takeOverSeat(
       sc = { ...sc, pendingHostReturn: { playerId, name: revived.name } }
     }
     next = sc
-  } else {
+  } else if (room.kind === 'hot-potato') {
     let hp = next as HotPotatoRoom
     if (hp.aliveIds.includes(match.id)) {
       hp = {
@@ -196,9 +211,98 @@ function takeOverSeat(
       hp = { ...hp, pendingHostReturn: { playerId, name: revived.name } }
     }
     next = hp
+  } else if (room.kind === 'neighborhood') {
+    let nb = next as NeighborhoodRoom
+    if (match.id !== playerId) {
+      const pieces = { ...nb.pieces }
+      const teamOf = { ...nb.teamOf }
+      if (pieces[match.id]) {
+        pieces[playerId] = pieces[match.id]!
+        delete pieces[match.id]
+      }
+      if (teamOf[match.id]) {
+        teamOf[playerId] = teamOf[match.id]!
+        delete teamOf[match.id]
+      }
+      nb = { ...nb, pieces, teamOf }
+    }
+    if (wasLeft && isCreator && nb.hostId !== playerId && !reclaimHost) {
+      nb = { ...nb, pendingHostReturn: { playerId, name: revived.name } }
+    }
+    next = nb
   }
 
   return next
+}
+
+function pieceTakenByOther(
+  room: NeighborhoodRoom,
+  pieceId: NeighborhoodPieceId,
+  exceptPlayerId: string,
+): boolean {
+  const style = room.rules.teamStyle
+  if (style === 'shared') {
+    // Piece unique per tray: if another tray already uses it, block
+    const myTray = room.teamOf[exceptPlayerId]
+    for (const [pid, piece] of Object.entries(room.pieces)) {
+      if (pid === exceptPlayerId || piece !== pieceId) continue
+      const theirTray = room.teamOf[pid]
+      if (!myTray || !theirTray || theirTray !== myTray) return true
+    }
+    return false
+  }
+  return Object.entries(room.pieces).some(
+    ([pid, piece]) => pid !== exceptPlayerId && piece === pieceId,
+  )
+}
+
+/** Lobby ready: every active player has a piece (+ team when required). */
+export function neighborhoodLobbyReady(room: NeighborhoodRoom): boolean {
+  const active = activeList(room)
+  if (active.length < 2) return false
+  if (active.length > maxPhonesForRules(room.rules)) return false
+
+  for (const p of active) {
+    if (!room.pieces[p.id]) return false
+  }
+
+  if (room.rules.teamStyle === 'off') {
+    return active.length <= 8
+  }
+
+  if (room.rules.teamStyle === 'shared') {
+    for (const p of active) {
+      if (!room.teamOf[p.id]) return false
+    }
+    const byTray = new Map<string, string[]>()
+    for (const p of active) {
+      const tray = room.teamOf[p.id]!
+      const list = byTray.get(tray) ?? []
+      list.push(p.id)
+      byTray.set(tray, list)
+    }
+    for (const [, ids] of byTray) {
+      if (ids.length > 2) return false
+      const piece0 = room.pieces[ids[0]!]
+      if (!piece0) return false
+      if (ids.some((id) => room.pieces[id] !== piece0)) return false
+    }
+    return byTray.size >= 2
+  }
+
+  // Alliance
+  const preset = room.rules.alliancePreset ?? '2v2v2v2'
+  const groups = allianceGroupIds(preset)
+  const size = allianceGroupSize(preset)
+  for (const p of active) {
+    if (!room.teamOf[p.id] || !groups.includes(room.teamOf[p.id]!)) return false
+  }
+  if (active.length !== groups.length * size) return false
+  for (const g of groups) {
+    const count = active.filter((p) => room.teamOf[p.id] === g).length
+    if (count !== size) return false
+  }
+  return true
 }
 
 export function applyAction(room: RoomState, action: RoomAction, now = Date.now()): RoomState {
@@ -252,6 +356,12 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
 
       if (room.kind === 'hot-potato' && Object.keys(room.players).length >= 50) {
         return room
+      }
+      if (room.kind === 'neighborhood') {
+        const activeCount = activeList(room).length
+        // After start, Slice A rejects new seats (late-join accept is Slice C)
+        if (room.rulesLocked || room.status !== 'lobby') return room
+        if (activeCount >= maxPhonesForRules(room.rules)) return room
       }
       let next: RoomState = {
         ...room,
@@ -345,12 +455,33 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
         return next
       }
 
+      if (room.kind === 'neighborhood') {
+        // Soft-leave in lobby so reconnect works; strip piece/team when leaving lobby
+        const pieces = { ...room.pieces }
+        const teamOf = { ...room.teamOf }
+        delete pieces[action.playerId]
+        delete teamOf[action.playerId]
+        return {
+          ...room,
+          hostId,
+          players: {
+            ...room.players,
+            [action.playerId]: { ...player, left: true },
+          },
+          pieces,
+          teamOf,
+          pendingHostReturn:
+            room.pendingHostReturn?.playerId === action.playerId ? null : room.pendingHostReturn,
+        }
+      }
+
       const { [action.playerId]: _, ...rest } = room.players
+      const hp = room as HotPotatoRoom
       return {
-        ...room,
+        ...hp,
         hostId: hostId === action.playerId ? (Object.keys(rest)[0] ?? hostId) : hostId,
         players: rest,
-        aliveIds: room.aliveIds.filter((id) => id !== action.playerId),
+        aliveIds: hp.aliveIds.filter((id) => id !== action.playerId),
         pendingHostReturn:
           room.pendingHostReturn?.playerId === action.playerId ? null : room.pendingHostReturn,
       }
@@ -593,6 +724,88 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
         regrouping: false,
         pullTo: undefined,
         pendingHostReturn: null,
+        hostAwayAt: null,
+      }
+    }
+
+    case 'set-neighborhood-piece': {
+      if (room.kind !== 'neighborhood' || room.rulesLocked || room.status !== 'lobby') {
+        return room
+      }
+      const me = room.players[action.fromId]
+      if (!me || me.left) return room
+      if (!NEIGHBORHOOD_PIECES.includes(action.pieceId)) return room
+      if (pieceTakenByOther(room, action.pieceId, action.fromId)) return room
+
+      if (room.rules.teamStyle === 'shared') {
+        const tray = room.teamOf[action.fromId]
+        if (tray) {
+          const mates = activeList(room).filter(
+            (p) => p.id !== action.fromId && room.teamOf[p.id] === tray,
+          )
+          // Teammate already set the tray piece — must match
+          const matePiece = mates.map((m) => room.pieces[m.id]).find(Boolean)
+          if (matePiece && matePiece !== action.pieceId) return room
+        }
+      }
+
+      return {
+        ...room,
+        pieces: { ...room.pieces, [action.fromId]: action.pieceId },
+      }
+    }
+
+    case 'set-neighborhood-team': {
+      if (room.kind !== 'neighborhood' || room.rulesLocked || room.status !== 'lobby') {
+        return room
+      }
+      const me = room.players[action.fromId]
+      if (!me || me.left) return room
+      const style = room.rules.teamStyle
+      if (style === 'off') return room
+
+      if (style === 'shared') {
+        if (!(SHARED_TRAY_IDS as readonly string[]).includes(action.teamId)) return room
+        const onTray = activeList(room).filter(
+          (p) => p.id !== action.fromId && room.teamOf[p.id] === action.teamId,
+        )
+        if (onTray.length >= 2) return room
+        let pieces = room.pieces
+        const matePiece = onTray.map((m) => room.pieces[m.id]).find(Boolean)
+        if (matePiece) {
+          pieces = { ...pieces, [action.fromId]: matePiece }
+        }
+        return {
+          ...room,
+          teamOf: { ...room.teamOf, [action.fromId]: action.teamId },
+          pieces,
+        }
+      }
+
+      // Alliance
+      const preset = room.rules.alliancePreset ?? '2v2v2v2'
+      const groups = allianceGroupIds(preset)
+      if (!groups.includes(action.teamId)) return room
+      const size = allianceGroupSize(preset)
+      const onGroup = activeList(room).filter(
+        (p) => p.id !== action.fromId && room.teamOf[p.id] === action.teamId,
+      )
+      if (onGroup.length >= size) return room
+      return {
+        ...room,
+        teamOf: { ...room.teamOf, [action.fromId]: action.teamId },
+      }
+    }
+
+    case 'start-neighborhood': {
+      if (room.kind !== 'neighborhood' || action.fromId !== room.hostId) return room
+      if (room.status !== 'lobby' || room.rulesLocked) return room
+      if (!neighborhoodLobbyReady(room)) return room
+      return {
+        ...room,
+        status: 'playing',
+        rulesLocked: true,
+        boardReady: false,
         hostAwayAt: null,
       }
     }

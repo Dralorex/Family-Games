@@ -1,3 +1,7 @@
+import type {
+  NeighborhoodPieceId,
+  NeighborhoodRules,
+} from '../core/neighborhood/types'
 import type { EndMode, ScoreMap, ScorecardTemplateId, WinDirection } from '../core/score/types'
 import type { TimerState } from '../core/timer/types'
 
@@ -61,7 +65,27 @@ export interface ScorecardRoom extends RoomBase {
   pointLimit?: number
 }
 
-export type RoomState = HotPotatoRoom | ScorecardRoom
+/**
+ * Neighborhood lobby + shell (Slice A).
+ * Board / economy / turns land in later slices; rules + seating lock here.
+ */
+export interface NeighborhoodRoom extends RoomBase {
+  kind: 'neighborhood'
+  rules: NeighborhoodRules
+  /** Locked when the host starts — never change mid-room */
+  rulesLocked: boolean
+  /** playerId → chosen piece (unique across trays / solo seats) */
+  pieces: Record<string, NeighborhoodPieceId>
+  /**
+   * Shared: tray id "1"…"8". Alliance: group "A"…. Off: omitted / unused.
+   * playerId → team key
+   */
+  teamOf: Record<string, string>
+  /** Slice B+: board state placeholder so peers share one shape early */
+  boardReady: boolean
+}
+
+export type RoomState = HotPotatoRoom | ScorecardRoom | NeighborhoodRoom
 
 export type RoomAction =
   | { type: 'hello'; fromId: string }
@@ -91,3 +115,10 @@ export type RoomAction =
   | { type: 'claim-host'; fromId: string }
   /** Same Players: back to lobby, drop inactive seats, keep active names */
   | { type: 'restart-same-players'; fromId: string }
+  | {
+      type: 'set-neighborhood-piece'
+      fromId: string
+      pieceId: NeighborhoodPieceId
+    }
+  | { type: 'set-neighborhood-team'; fromId: string; teamId: string }
+  | { type: 'start-neighborhood'; fromId: string }

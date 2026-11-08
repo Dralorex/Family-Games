@@ -7,7 +7,9 @@ export function normalizeRoom(room: RoomState): RoomState {
       ? room.title
       : room.kind === 'scorecard'
         ? room.templateName
-        : 'Hot Potato'
+        : room.kind === 'neighborhood'
+          ? 'Neighborhood'
+          : 'Hot Potato'
   const partyId =
     'partyId' in room && typeof room.partyId === 'string' && room.partyId
       ? room.partyId
