@@ -80,8 +80,9 @@ function pickRicherState(local: RoomState | null, incoming: RoomState): RoomStat
   if (incomingProg !== localProg) {
     return incomingProg > localProg ? incoming : local
   }
-  const localPlayers = Object.keys(local.players).length
-  const incomingPlayers = Object.keys(incoming.players).length
+  // Same progress: prefer the fuller active roster so a lost join is not sticky
+  const localPlayers = Object.values(local.players).filter((p) => !p.left).length
+  const incomingPlayers = Object.values(incoming.players).filter((p) => !p.left).length
   if (incomingPlayers !== localPlayers) {
     return incomingPlayers > localPlayers ? incoming : local
   }
@@ -287,7 +288,8 @@ export function connectRoomSync(opts: {
       // ignore
     }
     if (client && mqttConnected) {
-      client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
+      // qos 1 — joins/hellos must not vanish on public brokers (qos 0 dropped seats)
+      client.publish(actionTopic(code), JSON.stringify(action), { qos: 1 })
       return
     }
     // Don't drop joins/hellos that fire before the socket is ready
@@ -298,7 +300,7 @@ export function connectRoomSync(opts: {
     if (!client || !mqttConnected || pendingActions.length === 0) return
     const queued = pendingActions.splice(0, pendingActions.length)
     for (const action of queued) {
-      client.publish(actionTopic(code), JSON.stringify(action), { qos: 0 })
+      client.publish(actionTopic(code), JSON.stringify(action), { qos: 1 })
     }
   }
 

@@ -24,6 +24,17 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.17',
+    pr: 17,
+    title: 'Reliable scorecard joins past six players',
+    added: [],
+    updated: [
+      'Join retries when your seat is missing from the roster (dropped MQTT joins)',
+      'Room actions publish at MQTT qos 1 so joins are less likely to vanish',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.16',
     pr: 16,
     title: 'Neighborhood board clockwise layout',
