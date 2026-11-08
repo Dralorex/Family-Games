@@ -10,6 +10,7 @@ import {
   type PropertyDef,
 } from './board'
 import { NEIGHBOR_TEXTS, WILD_TEXTS } from './cards'
+import { appendCinematic } from './cinematics'
 import {
   emptyDeed,
   type NeighborhoodGame,
@@ -38,6 +39,21 @@ export interface SeatInput {
 function pushLog(game: NeighborhoodGame, line: string): NeighborhoodGame {
   const log = [line, ...game.log].slice(0, LOG_MAX)
   return { ...game, log, lastEventId: game.lastEventId + 1 }
+}
+
+function withMovie(
+  game: NeighborhoodGame,
+  cine: Parameters<typeof appendCinematic>[1],
+  line?: string,
+): NeighborhoodGame {
+  let next = appendCinematic(game, cine)
+  if (line) {
+    next = {
+      ...next,
+      log: [line, ...next.log].slice(0, LOG_MAX),
+    }
+  }
+  return next
 }
 
 function trayName(game: NeighborhoodGame, trayId: TrayId, names: Record<string, string>): string {
@@ -108,7 +124,7 @@ function tryDebit(
   const t = game.trays[trayId]
   if (!t) return { game, paid: true }
   if (t.cash >= amount) {
-    let next = {
+    let next: NeighborhoodGame = {
       ...game,
       trays: {
         ...game.trays,
@@ -120,6 +136,14 @@ function tryDebit(
     } else if (to !== 'bank') {
       next = credit(next, to, amount)
     }
+    const tone = /rent/i.test(reason) ? 'short' : 'long'
+    next = withMovie(next, {
+      kind: 'pay',
+      fromTrayId: trayId,
+      toTrayId: to === 'bank' && rules.jackpot ? 'jackpot' : to,
+      amount,
+      tone,
+    })
     return { game: next, paid: true }
   }
   // Slice B: open debt prompt (full mortgage/sell UI in Slice C)
@@ -171,7 +195,7 @@ function worksRent(game: NeighborhoodGame, ownerId: TrayId, diceTotal: number): 
 function sendToJail(game: NeighborhoodGame, trayId: TrayId): NeighborhoodGame {
   const t = game.trays[trayId]
   if (!t) return game
-  return {
+  let next: NeighborhoodGame = {
     ...game,
     doublesCount: 0,
     usedJailDoubles: false,
@@ -186,6 +210,7 @@ function sendToJail(game: NeighborhoodGame, trayId: TrayId): NeighborhoodGame {
     },
     prompt: null,
   }
+  return withMovie(next, { kind: 'jail', trayId })
 }
 
 /** Move forward `steps`, paying Home salary when passing/landing per rules. */
@@ -203,29 +228,45 @@ function moveForward(
   const dest = raw % 40
   const passedOrLandedHome = raw >= 40
   let cash = t.cash
-  let next = game
+  let next: NeighborhoodGame = game
+  let homeCollect = 0
   if (passedOrLandedHome) {
     if (dest === 0 && rules.landHomeDouble) {
-      cash += 400_000
-      next = pushLog(next, `Landed on Home · collected ${formatCash(400_000)}.`)
+      homeCollect = 400_000
+      cash += homeCollect
+      next = pushLog(next, `Landed on Home · collected ${formatCash(homeCollect)}.`)
     } else if (dest === 0 && payHomeOnLand) {
-      cash += HOME_SALARY
-      next = pushLog(next, `Landed on Home · collected ${formatCash(HOME_SALARY)}.`)
+      homeCollect = HOME_SALARY
+      cash += homeCollect
+      next = pushLog(next, `Landed on Home · collected ${formatCash(homeCollect)}.`)
     } else if (dest !== 0) {
-      cash += HOME_SALARY
-      next = pushLog(next, `Passed Home · collected ${formatCash(HOME_SALARY)}.`)
+      homeCollect = HOME_SALARY
+      cash += homeCollect
+      next = pushLog(next, `Passed Home · collected ${formatCash(homeCollect)}.`)
     } else {
-      cash += HOME_SALARY
-      next = pushLog(next, `Landed on Home · collected ${formatCash(HOME_SALARY)}.`)
+      homeCollect = HOME_SALARY
+      cash += homeCollect
+      next = pushLog(next, `Landed on Home · collected ${formatCash(homeCollect)}.`)
     }
   }
-  return {
+  next = {
     ...next,
     trays: {
       ...next.trays,
       [trayId]: { ...t, position: dest, cash },
     },
   }
+  next = withMovie(next, { kind: 'step', trayId, from, to: dest })
+  if (homeCollect > 0) {
+    next = withMovie(next, {
+      kind: 'collect',
+      trayId,
+      amount: homeCollect,
+      tone: 'long',
+      reason: 'Home',
+    })
+  }
+  return next
 }
 
 function moveBack(game: NeighborhoodGame, trayId: TrayId, steps: number): NeighborhoodGame {
@@ -365,6 +406,7 @@ export function initNeighborhoodGame(
     neighborDeck: freshDeck(16),
     lastEventId: 0,
     log: ['Opening rolls — highest goes first.'],
+    cinematics: [],
     winnerTrayIds: [],
     turnsTaken: 0,
     awayAt: {},
@@ -459,7 +501,11 @@ function resolveSpace(
     if (rules.jackpot && game.jackpot > 0) {
       const pot = game.jackpot
       let next = credit({ ...game, jackpot: 0 }, trayId, pot)
-      next = pushLog(next, `${label} collected the jackpot ${formatCash(pot)}.`)
+      next = withMovie(
+        next,
+        { kind: 'collect', trayId, amount: pot, tone: 'long', reason: 'Jackpot' },
+        `${label} collected the jackpot ${formatCash(pot)}.`,
+      )
       return { ...next, prompt: null }
     }
     return pushLog({ ...game, prompt: null }, `${label} landed on Town Square.`)
@@ -487,8 +533,9 @@ function resolveSpace(
     const deck = space.kind === 'wild' ? 'wild' : 'neighbor'
     const drawn = drawCard(game, deck)
     const text = (deck === 'wild' ? WILD_TEXTS : NEIGHBOR_TEXTS)[drawn.cardIndex]!
+    let next = withMovie(drawn.game, { kind: 'card', deck, text })
     return {
-      ...drawn.game,
+      ...next,
       prompt: { type: 'card', deck, cardIndex: drawn.cardIndex, text },
     }
   }
@@ -752,7 +799,11 @@ export function applyNeighborhoodGameAction(
       openingRolls: { ...game.openingRolls, [action.trayId]: total },
       openingNeeds: game.openingNeeds.filter((id) => id !== action.trayId),
     }
-    next = pushLog(next, `${trayName(next, action.trayId, names)} rolled ${a}+${b}=${total}.`)
+    next = withMovie(
+      next,
+      { kind: 'dice', faces: [a, b], trayId: action.trayId },
+      `${trayName(next, action.trayId, names)} rolled ${a}+${b}=${total}.`,
+    )
     if (next.openingNeeds.length > 0) return next
 
     // resolve winners / ties
@@ -930,7 +981,11 @@ export function applyNeighborhoodGameAction(
       lastDice: [a, b],
       doublesCount,
     }
-    next = pushLog(next, `${trayName(next, turn, names)} rolled ${a}+${b}.`)
+    next = withMovie(
+      next,
+      { kind: 'dice', faces: [a, b], trayId: turn },
+      `${trayName(next, turn, names)} rolled ${a}+${b}.`,
+    )
     if (doublesCount >= 3) {
       next = sendToJail(next, turn)
       next = pushLog(next, `${trayName(next, turn, names)} rolled three doubles — Jail.`)
@@ -973,8 +1028,9 @@ function buyDeed(
       [spaceIndex]: { ...game.deeds[spaceIndex]!, ownerTrayId: trayId, mortgaged: false },
     },
   }
-  next = pushLog(
+  next = withMovie(
     next,
+    { kind: 'buy', trayId, spaceIndex },
     `${trayName(next, trayId, names)} bought ${space.name} for ${formatCash(price)}${fromAuction ? ' (auction)' : ''}.`,
   )
   const doubles = Boolean(

@@ -1,3 +1,4 @@
+import type { NbCinematic } from './cinematics'
 import type { NeighborhoodPieceId } from './types'
 
 export type TrayId = string
@@ -106,6 +107,8 @@ export interface NeighborhoodGame {
   lastEventId: number
   /** Recent public log lines */
   log: string[]
+  /** Host-stamped movies for client animation queues */
+  cinematics: NbCinematic[]
   winnerTrayIds: TrayId[]
   /** End-turns completed since opening — open join until ≥ turnOrder.length */
   turnsTaken: number

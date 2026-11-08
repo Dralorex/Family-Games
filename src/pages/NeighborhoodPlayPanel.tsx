@@ -10,6 +10,8 @@ import { formatCash } from '../core/neighborhood/money'
 import { PIECE_LABELS } from '../core/neighborhood/types'
 import type { NeighborhoodRoom } from '../rooms/types'
 import type { useRoom } from '../hooks/useRoom'
+import { NeighborhoodCinema, shouldPauseCinema } from './NeighborhoodCinema'
+import { unlockAudio } from '../audio/neighborhood'
 
 function trayLabel(room: NeighborhoodRoom, trayId: string): string {
   const t = room.game?.trays[trayId]
@@ -41,6 +43,11 @@ export function NeighborhoodPlayPanel(props: {
 
   return (
     <div className="nb-play">
+      <NeighborhoodCinema
+        room={room}
+        playerId={playerId}
+        pauseQueue={shouldPauseCinema(game)}
+      />
       {game.lastDice ? (
         <p className="nb-dice" aria-live="polite">
           Dice <strong>{game.lastDice[0]}</strong> · <strong>{game.lastDice[1]}</strong>
@@ -64,7 +71,10 @@ export function NeighborhoodPlayPanel(props: {
             <button
               type="button"
               className="btn primary large"
-              onClick={() => send({ type: 'nb-opening-roll', fromId: playerId })}
+              onClick={() => {
+                void unlockAudio()
+                send({ type: 'nb-opening-roll', fromId: playerId })
+              }}
             >
               Roll for first
             </button>
@@ -393,7 +403,10 @@ export function NeighborhoodPlayPanel(props: {
               <button
                 type="button"
                 className="btn primary large"
-                onClick={() => send({ type: 'nb-roll', fromId: playerId })}
+                onClick={() => {
+                  void unlockAudio()
+                  send({ type: 'nb-roll', fromId: playerId })
+                }}
               >
                 Roll dice
               </button>

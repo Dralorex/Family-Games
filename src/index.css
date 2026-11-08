@@ -1268,3 +1268,160 @@ button {
   padding: 0.85rem 1.1rem;
   font-size: 1.05rem;
 }
+
+/* Neighborhood cinema / bills */
+.nb-cinema {
+  position: relative;
+  min-height: 4.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.nb-cinema-dice {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.nb-die {
+  width: 2.6rem;
+  height: 2.6rem;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 1.25rem;
+  background: var(--surface, #fff);
+  border: 2px solid var(--ink, #222);
+}
+
+.nb-die.tumble {
+  animation: nb-tumble 0.7s ease-out;
+}
+
+.nb-die.tumble.delay {
+  animation-delay: 0.12s;
+}
+
+@keyframes nb-tumble {
+  0% { transform: rotate(-40deg) scale(0.4); opacity: 0; }
+  60% { transform: rotate(12deg) scale(1.08); opacity: 1; }
+  100% { transform: rotate(0) scale(1); }
+}
+
+.nb-cinema-step,
+.nb-cinema-buy,
+.nb-cinema-jail {
+  text-align: center;
+  font-weight: 700;
+  animation: nb-fade-up 0.5s ease-out;
+}
+
+.nb-cinema-card {
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--teal, #2a7) 16%, transparent);
+  animation: nb-card-in 0.55s ease-out;
+}
+
+@keyframes nb-card-in {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.nb-cinema-trade {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-weight: 700;
+}
+
+.fly-left { animation: nb-fly-l 0.9s ease-out; }
+.fly-right { animation: nb-fly-r 0.9s ease-out; }
+
+@keyframes nb-fly-l {
+  from { transform: translateX(-40%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes nb-fly-r {
+  from { transform: translateX(40%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.nb-bills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem;
+  margin: 0.4rem 0;
+  min-height: 2rem;
+}
+
+.nb-bill {
+  padding: 0.25rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: #1f6b3a;
+  color: #f4fff6;
+  border: 1px solid #0d3d1f;
+}
+
+.nb-bills.leave .nb-bill {
+  animation: nb-bill-out 0.9s ease-in forwards;
+}
+.nb-bills.arrive .nb-bill {
+  animation: nb-bill-in 0.95s ease-out forwards;
+}
+.nb-bills.bystander .nb-bill {
+  animation: nb-bill-by 0.95s ease-in-out forwards;
+}
+
+@keyframes nb-bill-out {
+  to { transform: translateY(-50%) scale(0.4); opacity: 0; }
+}
+@keyframes nb-bill-in {
+  from { transform: translateY(-60%) scale(0.5); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes nb-bill-by {
+  0% { transform: translateX(-30%) scale(0.6); opacity: 0; }
+  45% { transform: translateX(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-40%) scale(0.5); opacity: 0; }
+}
+
+.nb-toast {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0.35rem auto 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  max-width: 22rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  animation: nb-fade-up 0.4s ease-out;
+}
+
+.nb-toast.paid {
+  background: color-mix(in srgb, #c0392b 18%, transparent);
+  color: #6b1410;
+}
+.nb-toast.collected {
+  background: color-mix(in srgb, #1f6b3a 18%, transparent);
+  color: #0d3d1f;
+}
+.nb-toast.info {
+  background: color-mix(in srgb, var(--muted, #888) 16%, transparent);
+}
+
+.nb-toast-sign {
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+@keyframes nb-fade-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}

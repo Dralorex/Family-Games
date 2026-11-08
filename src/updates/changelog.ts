@@ -26,7 +26,7 @@ export const UPDATES: UpdateNotes[] = [
   {
     version: '0.0.14',
     pr: 14,
-    title: 'Neighborhood lobby, play, and economy',
+    title: 'Neighborhood full multiplayer game',
     added: [
       'Neighborhood under Games — create room with locked house rules',
       'Lobby seating: original pieces, Solo / Shared tray / Alliance styles',
@@ -38,6 +38,8 @@ export const UPDATES: UpdateNotes[] = [
       'Build/sell evenly, mortgage/unmortgage, trades, and a debt cover screen',
       'Leave with gift → spectate; disconnect grace countdown + owner Remove',
       'Late join: open during first round, then owner Accept/Decline (cash only)',
+      'Per-client animation queue (dice, steps, bills, cards) with seat cameras',
+      'Matching Web Audio cues; Settings mute; refresh skips movies',
     ],
     updated: [
       'Games hub lists Neighborhood beside Hot Potato',

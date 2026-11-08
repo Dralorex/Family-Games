@@ -1,3 +1,4 @@
+import { appendCinematic } from './cinematics'
 import { emptyDeed, type NeighborhoodGame, type TrayId } from './gameTypes'
 import {
   applyBuild,
@@ -491,6 +492,11 @@ function executeTrade(
     }
   }
   next = { ...next, deeds }
+  next = appendCinematic(next, {
+    kind: 'trade',
+    fromTrayId: prompt.fromTrayId,
+    toTrayId: prompt.toTrayId,
+  })
   return pushLog(
     next,
     `Trade: ${trayName(next, prompt.fromTrayId, names)} ↔ ${trayName(next, prompt.toTrayId, names)}.`,

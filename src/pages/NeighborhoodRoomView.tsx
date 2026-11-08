@@ -14,6 +14,8 @@ import {
   type NeighborhoodPieceId,
 } from '../core/neighborhood/types'
 import { clearActiveSession } from '../lib/activeSession'
+import { getNeighborhoodMuted, setNeighborhoodMuted } from '../lib/neighborhoodMute'
+import { unlockAudio } from '../audio/neighborhood'
 import { HOST_AWAY_MS, neighborhoodLobbyReady } from '../rooms/reducer'
 import type { NeighborhoodRoom } from '../rooms/types'
 import { useRoom } from '../hooks/useRoom'
@@ -50,6 +52,7 @@ export function NeighborhoodRoomView(props: {
   const [showHostLeave, setShowHostLeave] = useState(false)
   const [leaveGift, setLeaveGift] = useState<'bank' | string>('bank')
   const [showLeaveGift, setShowLeaveGift] = useState(false)
+  const [muted, setMuted] = useState(() => getNeighborhoodMuted())
   const [now, setNow] = useState(() => Date.now())
   const navigate = useNavigate()
 
@@ -424,6 +427,19 @@ export function NeighborhoodRoomView(props: {
       <h2>Settings</h2>
       <p className="muted">Room code</p>
       <CodeDropdown code={room.code} />
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={muted}
+          onChange={(e) => {
+            const next = e.target.checked
+            setMuted(next)
+            setNeighborhoodMuted(next)
+            if (!next) void unlockAudio()
+          }}
+        />
+        <span>Mute game sounds</span>
+      </label>
       <p className="muted">
         Disconnect grace: {formatGrace(room.rules.disconnectGraceMs)} (owner removes manually after)
       </p>

@@ -30,7 +30,15 @@ export function normalizeRoom(room: RoomState): RoomState {
       creatorName,
       players,
       pendingHostReturn: room.pendingHostReturn ?? null,
-      game: room.game ?? null,
+      game: room.game
+        ? {
+            ...room.game,
+            cinematics: room.game.cinematics ?? [],
+            turnsTaken: room.game.turnsTaken ?? 0,
+            awayAt: room.game.awayAt ?? {},
+            joinRequests: room.game.joinRequests ?? [],
+          }
+        : null,
       boardReady: room.boardReady ?? Boolean(room.game),
       pieces: room.pieces ?? {},
       teamOf: room.teamOf ?? {},
