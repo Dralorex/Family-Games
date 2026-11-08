@@ -35,6 +35,17 @@ export const UPDATES: UpdateNotes[] = [
     removed: [],
   },
   {
+    version: '0.0.16',
+    pr: 16,
+    title: 'Neighborhood board clockwise layout',
+    added: [],
+    updated: [
+      'Board places Home bottom-right with spaces running clockwise (classic ring order)',
+      'Line names match their edges (South / West / North / East)',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.15',
     pr: 15,
     title: 'Fix MQTT progress scoring after Neighborhood',
