@@ -55,6 +55,19 @@ export const UPDATES: UpdateNotes[] = [
     removed: [],
   },
   {
+    version: '0.0.13',
+    pr: 13,
+    title: 'Live round sync for everyone',
+    added: [
+      'Reliable sync sequence so phones pick up every host publish (next round, scores, finish)',
+    ],
+    updated: [
+      'Connected players now refresh when the game master starts the next round',
+      'Stronger MQTT delivery for room state updates',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.12',
     pr: 12,
     title: 'In-app update notes',
