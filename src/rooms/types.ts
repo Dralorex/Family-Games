@@ -39,6 +39,8 @@ interface RoomBase {
   pendingHostReturn?: HostReturnRequest | null
   /** Host backgrounded / closed the app — used for auto handoff */
   hostAwayAt?: number | null
+  /** Bumped on every authority publish so peers never skip mid-game updates */
+  syncSeq?: number
 }
 
 export interface HotPotatoRoom extends RoomBase {

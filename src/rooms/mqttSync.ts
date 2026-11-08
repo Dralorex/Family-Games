@@ -37,23 +37,44 @@ const STATUS_RANK: Record<RoomState['status'], number> = {
   closed: 3,
 }
 
-/** Prefer progressed game status so a stale retained lobby cannot overwrite playing. */
+function scorecardProgress(state: RoomState): number {
+  if (state.kind !== 'scorecard') {
+    const hp = state
+    return STATUS_RANK[hp.status] * 1_000_000 + hp.placements.length * 100 + (50 - hp.aliveIds.length)
+  }
+  let scoreCells = 0
+  for (const roundMap of Object.values(state.scores)) {
+    scoreCells += Object.keys(roundMap).length
+  }
+  return (
+    STATUS_RANK[state.status] * 1_000_000 +
+    state.completedRounds * 10_000 +
+    state.currentRound * 100 +
+    scoreCells
+  )
+}
+
+/** Prefer progressed game so a stale retained lobby cannot overwrite playing / next round. */
 function pickRicherState(local: RoomState | null, incoming: RoomState): RoomState {
   if (!local) return incoming
   if (local.createdAt !== incoming.createdAt) {
     return incoming.createdAt >= local.createdAt ? incoming : local
   }
-  const localRank = STATUS_RANK[local.status]
-  const incomingRank = STATUS_RANK[incoming.status]
-  if (incomingRank !== localRank) {
-    return incomingRank > localRank ? incoming : local
+  const localSeq = local.syncSeq ?? 0
+  const incomingSeq = incoming.syncSeq ?? 0
+  if (incomingSeq !== localSeq) {
+    return incomingSeq > localSeq ? incoming : local
+  }
+  const localProg = scorecardProgress(local)
+  const incomingProg = scorecardProgress(incoming)
+  if (incomingProg !== localProg) {
+    return incomingProg > localProg ? incoming : local
   }
   const localPlayers = Object.keys(local.players).length
   const incomingPlayers = Object.keys(incoming.players).length
   if (incomingPlayers !== localPlayers) {
     return incomingPlayers > localPlayers ? incoming : local
   }
-  // Same shape — keep local to avoid echo thrash
   return local
 }
 
@@ -140,21 +161,26 @@ export function connectRoomSync(opts: {
     if (!client || !mqttConnected) return
     const payload = state.status === 'closed' ? '' : JSON.stringify(state)
     lastPublishedPayload = payload
-    client.publish(stateTopic(code), payload, { qos: 0, retain: true })
+    // qos 1 so next-round / score updates are less likely to vanish on public brokers
+    client.publish(stateTopic(code), payload, { qos: 1, retain: true })
   }
 
   const emitState = (state: RoomState) => {
-    room = state
-    setCachedRoom(state)
-    onState(state)
+    const stamped: RoomState = {
+      ...state,
+      syncSeq: Math.max((room?.syncSeq ?? 0) + 1, (state.syncSeq ?? 0) + 1, Date.now()),
+    }
+    room = stamped
+    setCachedRoom(stamped)
+    onState(stamped)
     try {
-      channel?.postMessage({ kind: 'state', state })
+      channel?.postMessage({ kind: 'state', state: stamped })
     } catch {
       // ignore
     }
-    publishMqttState(state)
+    publishMqttState(stamped)
     if (isAuthority) {
-      scheduleOwnerPublish(state)
+      scheduleOwnerPublish(stamped)
     }
   }
 
@@ -172,10 +198,24 @@ export function connectRoomSync(opts: {
 
   /**
    * Handle remote/retained state without re-publishing our own echoes.
-   * Reclaim only republishes once when we actually need to take the host seat.
+   * Non-authority clients treat host publishes as source of truth (incl. next round).
    */
   const handleIncomingState = (incoming: RoomState, fromBroadcast: boolean) => {
     if (room && incoming.createdAt < room.createdAt) return
+
+    // Peers must always take host updates — pickRicherState used to keep local when
+    // status + player count matched, which skipped next-round / score syncs.
+    if (!isAuthority && !canForceReclaim(incoming)) {
+      if (room && (incoming.syncSeq ?? 0) < (room.syncSeq ?? 0)) return
+      if (room && (incoming.syncSeq ?? 0) === (room.syncSeq ?? 0)) {
+        const richer = pickRicherState(room, incoming)
+        if (richer === room) return
+        adoptIncoming(richer)
+        return
+      }
+      adoptIncoming(incoming)
+      return
+    }
 
     const snapshot = pickRicherState(room, incoming)
     const sameAsLocal = room !== null && snapshot === room
@@ -191,15 +231,9 @@ export function connectRoomSync(opts: {
         return
       }
 
-      // Already host authority: adopt richer remote state locally, never re-emit echoes
       if (!sameAsLocal) {
         adoptIncoming(snapshot)
       }
-      return
-    }
-
-    if (!isAuthority) {
-      if (!sameAsLocal) adoptIncoming(snapshot)
       return
     }
 
