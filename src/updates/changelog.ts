@@ -24,6 +24,22 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.19',
+    pr: 19,
+    title: 'Neighborhood deeds, board inspect, and trade popups',
+    added: [
+      'Deeds tab for holdings, jail-free cards, and property management',
+      'Board-tap deed cards with rent ladder, owner, and color-set roster',
+      'Buy popup with full deed stats and set ownership before you decide',
+      'Trade compose popup; sent offers pop on the other phone on any tab',
+    ],
+    updated: [
+      'Tokens finish dice/step movies before buy and other action prompts appear',
+      'Your deeds list groups by color set with price, buildings, and mortgage',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.17',
     pr: 17,
     title: 'Reliable scorecard joins past six players',
