@@ -29,8 +29,9 @@ export function NeighborhoodBoard(props: {
   jackpotEnabled: boolean
   /** While a step cinematic plays, show this tray on `to` instead of final position. */
   stepVisual?: { trayId: string; to: number } | null
+  onSpaceClick?: (spaceIndex: number) => void
 }) {
-  const { game, jackpotEnabled, stepVisual } = props
+  const { game, jackpotEnabled, stepVisual, onSpaceClick } = props
   const pot = jackpotFaceLabel(game.jackpot)
 
   return (
@@ -48,13 +49,26 @@ export function NeighborhoodBoard(props: {
           ? game.trays[deed.ownerTrayId]?.pieceId
           : null
         const isCorner = [0, 10, 20, 30].includes(space.index)
+        const clickable = Boolean(onSpaceClick)
         return (
           <div
             key={space.index}
-            className={`nb-cell ${groupClass(space)} ${isCorner ? 'corner' : ''} ${here.length ? 'has-token' : ''}`}
+            className={`nb-cell ${groupClass(space)} ${isCorner ? 'corner' : ''} ${here.length ? 'has-token' : ''} ${clickable ? 'clickable' : ''}`}
             style={{ gridColumn: col, gridRow: row }}
             role="gridcell"
             title={space.name}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? () => onSpaceClick!(space.index) : undefined}
+            onKeyDown={
+              clickable
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onSpaceClick!(space.index)
+                    }
+                  }
+                : undefined
+            }
           >
             <span className="nb-cell-name">{shortName(space.name)}</span>
             {deed?.ownerTrayId && ownerPiece ? (

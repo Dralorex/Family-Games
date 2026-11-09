@@ -113,8 +113,10 @@ export function NeighborhoodCinema(props: {
   playerId: string
   pauseQueue: boolean
   onActiveChange?: (cine: NbCinematic | null) => void
+  /** True while dice/step movies are active or still queued. */
+  onMovementPending?: (pending: boolean) => void
 }) {
-  const { room, playerId, pauseQueue, onActiveChange } = props
+  const { room, playerId, pauseQueue, onActiveChange, onMovementPending } = props
   const game = room.game
   const seenRef = useRef(0)
   const bootstrapped = useRef(false)
@@ -145,8 +147,11 @@ export function NeighborhoodCinema(props: {
   }, [game?.lastEventId, game?.cinematics])
 
   useEffect(() => {
-    if (active || pauseQueue || queue.length === 0) return
+    if (active || queue.length === 0) return
     const next = queue[0]!
+    // Always play dice/step so tokens finish moving before buy/trade prompts.
+    const movement = next.kind === 'dice' || next.kind === 'step'
+    if (pauseQueue && !movement) return
     setActive(next)
     setQueue((q) => q.slice(1))
   }, [queue, active, pauseQueue])
@@ -154,6 +159,15 @@ export function NeighborhoodCinema(props: {
   useEffect(() => {
     onActiveChange?.(active)
   }, [active, onActiveChange])
+
+  const movementPending =
+    active?.kind === 'dice' ||
+    active?.kind === 'step' ||
+    queue.some((c) => c.kind === 'dice' || c.kind === 'step')
+
+  useEffect(() => {
+    onMovementPending?.(movementPending)
+  }, [movementPending, onMovementPending])
 
   useEffect(() => {
     if (!active) return

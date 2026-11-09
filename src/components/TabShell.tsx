@@ -8,9 +8,12 @@ export function TabShell(props: {
   settings?: ReactNode
   tab: RoomTab
   onTab: (tab: RoomTab) => void
+  /** Label for the middle tab (Scorecard = Score, Neighborhood = Deeds). */
+  scoreLabel?: string
 }) {
   const panel =
     props.tab === 'main' ? props.main : props.tab === 'score' ? props.score : props.settings
+  const scoreLabel = props.scoreLabel ?? 'Score'
 
   return (
     <div className="tab-shell">
@@ -28,7 +31,7 @@ export function TabShell(props: {
           className={props.tab === 'score' ? 'active' : ''}
           onClick={() => props.onTab('score')}
         >
-          Score
+          {scoreLabel}
         </button>
         {props.settings ? (
           <button
