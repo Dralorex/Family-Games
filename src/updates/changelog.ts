@@ -24,6 +24,19 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.18',
+    pr: 18,
+    title: 'Settings code contrast and score submit feedback',
+    added: [
+      'Green “Score submitted!” under the score box after you enter a round',
+    ],
+    updated: [
+      'Settings Code button uses ink on cream (not cream-on-cream)',
+      'Score button reads Update score after submit, Submit score again next round',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.17',
     pr: 17,
     title: 'Reliable scorecard joins past six players',

@@ -383,6 +383,12 @@ export function ScorecardRoomView(props: {
               }}
             />
           </label>
+          {entryTarget &&
+          room.scores[entryTarget.id]?.[room.currentRound] !== undefined ? (
+            <p className="ok score-submitted" role="status">
+              Score submitted!
+            </p>
+          ) : null}
           <button type="button" className="btn primary" onClick={submitScore}>
             {entryTarget && room.scores[entryTarget.id]?.[room.currentRound] !== undefined
               ? 'Update score'
