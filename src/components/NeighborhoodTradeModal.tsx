@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { spaceAt } from '../core/neighborhood/board'
 import { bareDeedIndexes } from '../core/neighborhood/economy'
 import { canTapTray, trayIdForPlayer } from '../core/neighborhood/engine'
-import { formatCash } from '../core/neighborhood/money'
+import { formatTradeSide } from '../core/neighborhood/tradeSummary'
 import type { NeighborhoodRoom } from '../rooms/types'
 import type { useRoom } from '../hooks/useRoom'
 
@@ -78,22 +78,22 @@ export function NeighborhoodTradeModal(props: {
         {prompt.frozen ? ' · waiting reply' : ' · drafting'}
       </p>
       <p className="muted">
-        Offer {formatCash(prompt.offerCash)}
-        {prompt.offerDeeds.length
-          ? ` + ${prompt.offerDeeds.map((i) => spaceAt(i).name).join(', ')}`
-          : ''}
-        {prompt.offerJailFreeWild + prompt.offerJailFreeNeighbor > 0
-          ? ` + jail-free×${prompt.offerJailFreeWild + prompt.offerJailFreeNeighbor}`
-          : ''}
+        {trayLabel(room, prompt.fromTrayId)} gives:{' '}
+        {formatTradeSide({
+          cash: prompt.offerCash,
+          deeds: prompt.offerDeeds,
+          jailFreeWild: prompt.offerJailFreeWild,
+          jailFreeNeighbor: prompt.offerJailFreeNeighbor,
+        })}
       </p>
       <p className="muted">
-        Ask {formatCash(prompt.askCash)}
-        {prompt.askDeeds.length
-          ? ` + ${prompt.askDeeds.map((i) => spaceAt(i).name).join(', ')}`
-          : ''}
-        {prompt.askJailFreeWild + prompt.askJailFreeNeighbor > 0
-          ? ` + jail-free×${prompt.askJailFreeWild + prompt.askJailFreeNeighbor}`
-          : ''}
+        {trayLabel(room, prompt.toTrayId)} gives:{' '}
+        {formatTradeSide({
+          cash: prompt.askCash,
+          deeds: prompt.askDeeds,
+          jailFreeWild: prompt.askJailFreeWild,
+          jailFreeNeighbor: prompt.askJailFreeNeighbor,
+        })}
       </p>
     </div>
   ) : null

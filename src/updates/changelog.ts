@@ -36,6 +36,7 @@ export const UPDATES: UpdateNotes[] = [
     updated: [
       'Tokens finish dice/step movies before buy and other action prompts appear',
       'Your deeds list groups by color set with price, buildings, and mortgage',
+      'Accepted trades list only what moved (no empty $0 lines)',
     ],
     removed: [],
   },
