@@ -24,6 +24,17 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.20',
+    pr: 20,
+    title: 'Scorecard This Round / Next Round mid-join',
+    added: [
+      'Mid-round join, add-on-device, and leave/rejoin ask This Round or Next Round',
+      'This Round keeps score entry open; Next Round applies worst when the round ends',
+    ],
+    updated: [],
+    removed: [],
+  },
+  {
     version: '0.0.19',
     pr: 19,
     title: 'Neighborhood deeds, board inspect, and trade popups',
