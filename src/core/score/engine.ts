@@ -43,17 +43,18 @@ export function activePlayers<T extends { left?: boolean }>(players: T[]): T[] {
 }
 
 export function missingScorePlayerIds(
-  players: { id: string; left?: boolean }[],
+  players: { id: string; left?: boolean; joinNextRound?: boolean }[],
   scores: ScoreMap,
   round: number,
 ): string[] {
   return activePlayers(players)
+    .filter((p) => !p.joinNextRound)
     .filter((p) => scores[p.id]?.[round] === undefined)
     .map((p) => p.id)
 }
 
 export function allScoresEntered(
-  players: { id: string; left?: boolean }[],
+  players: { id: string; left?: boolean; joinNextRound?: boolean }[],
   scores: ScoreMap,
   round: number,
 ): boolean {
