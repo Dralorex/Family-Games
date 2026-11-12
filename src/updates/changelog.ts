@@ -1,19 +1,33 @@
 /**
- * In-app update notes.
+ * In-app update notes. Home shows these as UP #<version>.
  *
- * Version format: UP #0.0.<PR_NUMBER>  (e.g. PR #12 → 0.0.12)
+ * Version is its own counter. The GitHub PR number is only `pr` (a reference).
+ * Early 0.0.x notes happened to match PR numbers — leave those as history.
+ * Do not set new versions from the PR number.
  *
- * Workflow for agents / contributors:
- * 1. Check open PRs against main first.
- * 2. If an unmerged feature PR is already open for this work, add/update its
- *    entry here on that same branch (same 0.0.<pr#>).
- * 3. If all related PRs are merged, open a new PR, use that PR number as
- *    0.0.<pr#>, and add a new entry at the top of UPDATES.
+ * PR path (always first):
+ * 1. List open PRs against main.
+ * 2. If one already covers this work, stay on that branch. Edit that entry’s
+ *    bullets only. Do not open another PR and do not bump `version`.
+ * 3. If none covers it, branch from main, open one PR, then add a new entry
+ *    at the top of UPDATES.
+ *
+ * Version on that new entry:
+ * - Default: `nextPatchVersion(latestVersion())` — last segment + 1
+ *   (0.0.20 → 0.0.21, 0.1.3 → 0.1.4, 1.0.0 → 1.0.1).
+ * - Only when asked for a new line (0.1.0 or 1.0.0): use that version exactly.
+ *   The old line stops. The next default bump restarts on the new line
+ *   (0.1.0 → 0.1.1, not another 0.0.x).
+ * - Set `pr` to the real PR number. It may differ from the version.
+ *
+ * Copy is for players (Added / Updated / Removed): short, concrete, no file
+ * or protocol jargon. Skip a new entry when nothing player-visible changed.
  */
 
 export interface UpdateNotes {
-  /** Display / compare id, e.g. "0.0.12" */
+  /** Display id, e.g. "0.0.21" or "0.1.0". Not the PR number. */
   version: string
+  /** GitHub PR that shipped this note. Reference only. */
   pr: number
   title: string
   added: string[]
@@ -170,6 +184,20 @@ export function compareVersions(a: string, b: string): number {
 
 export function latestVersion(): string | null {
   return UPDATES[0]?.version ?? null
+}
+
+/**
+ * Next note on the current line. Does not read the PR number.
+ * 0.0.20 → 0.0.21, 0.1.0 → 0.1.1, 1.0.0 → 1.0.1.
+ * A requested 0.1.0 / 1.0.0 is set by hand; later bumps use this.
+ */
+export function nextPatchVersion(current: string | null | undefined): string {
+  if (!current) return '0.0.1'
+  const parts = current.split('.').map((n) => Number.parseInt(n, 10))
+  if (parts.length === 0 || parts.some((n) => !Number.isFinite(n))) return '0.0.1'
+  while (parts.length < 3) parts.push(0)
+  parts[parts.length - 1] = (parts[parts.length - 1] ?? 0) + 1
+  return parts.join('.')
 }
 
 /** Unseen updates, newest → oldest. */
