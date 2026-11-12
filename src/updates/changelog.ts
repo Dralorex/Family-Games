@@ -12,13 +12,16 @@
  * 3. If none covers it, branch from main, open one PR, then add a new entry
  *    at the top of UPDATES.
  *
- * Version on that new entry:
+ * Version on that new entry (`pr` is the real PR number and may differ):
  * - Default: `nextPatchVersion(latestVersion())` — last segment + 1
- *   (0.0.20 → 0.0.21, 0.1.3 → 0.1.4, 1.0.0 → 1.0.1).
- * - Only when asked for a new line (0.1.0 or 1.0.0): use that version exactly.
- *   The old line stops. The next default bump restarts on the new line
- *   (0.1.0 → 0.1.1, not another 0.0.x).
- * - Set `pr` to the real PR number. It may differ from the version.
+ *   (0.0.20 → 0.0.21, 0.2.3 → 0.2.4, 1.4.0 → 1.4.1).
+ * - Asked for a new 0.x.0 line: `nextMinorVersion`. The patch resets to 0
+ *   every time (0.0.20 → 0.1.0, 0.1.7 → 0.2.0, 1.3.4 → 1.4.0). Do not keep
+ *   counting the old 0.0.x series.
+ * - Asked for a new x.0.0 line: `nextMajorVersion`. Minor and patch both
+ *   reset (0.4.2 → 1.0.0, 1.8.6 → 2.0.0). This is any major, not only 1.0.0.
+ * - After either reset, the next default bump is the new line’s patch
+ *   (0.2.0 → 0.2.1, 3.0.0 → 3.0.1).
  *
  * Copy is for players (Added / Updated / Removed): short, concrete, no file
  * or protocol jargon. Skip a new entry when nothing player-visible changed.
@@ -186,18 +189,42 @@ export function latestVersion(): string | null {
   return UPDATES[0]?.version ?? null
 }
 
+function versionParts(current: string | null | undefined): [number, number, number] | null {
+  if (!current) return null
+  const parts = current.split('.').map((n) => Number.parseInt(n, 10))
+  if (parts.length === 0 || parts.some((n) => !Number.isFinite(n))) return null
+  while (parts.length < 3) parts.push(0)
+  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
+}
+
 /**
  * Next note on the current line. Does not read the PR number.
- * 0.0.20 → 0.0.21, 0.1.0 → 0.1.1, 1.0.0 → 1.0.1.
- * A requested 0.1.0 / 1.0.0 is set by hand; later bumps use this.
+ * 0.0.20 → 0.0.21, 0.2.0 → 0.2.1, 1.4.0 → 1.4.1.
  */
 export function nextPatchVersion(current: string | null | undefined): string {
-  if (!current) return '0.0.1'
-  const parts = current.split('.').map((n) => Number.parseInt(n, 10))
-  if (parts.length === 0 || parts.some((n) => !Number.isFinite(n))) return '0.0.1'
-  while (parts.length < 3) parts.push(0)
-  parts[parts.length - 1] = (parts[parts.length - 1] ?? 0) + 1
-  return parts.join('.')
+  const parts = versionParts(current)
+  if (!parts) return '0.0.1'
+  return `${parts[0]}.${parts[1]}.${parts[2] + 1}`
+}
+
+/**
+ * New 0.x.0 (or x.y.0) line. Patch resets to 0 every time.
+ * 0.0.20 → 0.1.0, 0.1.7 → 0.2.0, 1.3.4 → 1.4.0.
+ */
+export function nextMinorVersion(current: string | null | undefined): string {
+  const parts = versionParts(current)
+  if (!parts) return '0.1.0'
+  return `${parts[0]}.${parts[1] + 1}.0`
+}
+
+/**
+ * New x.0.0 line. Minor and patch both reset.
+ * 0.0.20 → 1.0.0, 0.4.2 → 1.0.0, 1.8.6 → 2.0.0.
+ */
+export function nextMajorVersion(current: string | null | undefined): string {
+  const parts = versionParts(current)
+  if (!parts) return '1.0.0'
+  return `${parts[0] + 1}.0.0`
 }
 
 /** Unseen updates, newest → oldest. */
