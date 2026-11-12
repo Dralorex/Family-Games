@@ -1,19 +1,36 @@
 /**
- * In-app update notes.
+ * In-app update notes. Home shows these as UP #<version>.
  *
- * Version format: UP #0.0.<PR_NUMBER>  (e.g. PR #12 → 0.0.12)
+ * Version is its own counter. The GitHub PR number is only `pr` (a reference).
+ * Early 0.0.x notes happened to match PR numbers — leave those as history.
+ * Do not set new versions from the PR number.
  *
- * Workflow for agents / contributors:
- * 1. Check open PRs against main first.
- * 2. If an unmerged feature PR is already open for this work, add/update its
- *    entry here on that same branch (same 0.0.<pr#>).
- * 3. If all related PRs are merged, open a new PR, use that PR number as
- *    0.0.<pr#>, and add a new entry at the top of UPDATES.
+ * PR path (always first):
+ * 1. List open PRs against main.
+ * 2. If one already covers this work, stay on that branch. Edit that entry’s
+ *    bullets only. Do not open another PR and do not bump `version`.
+ * 3. If none covers it, branch from main, open one PR, then add a new entry
+ *    at the top of UPDATES.
+ *
+ * Version on that new entry (`pr` is the real PR number and may differ):
+ * - Default: `nextPatchVersion(latestVersion())` — last segment + 1
+ *   (0.0.20 → 0.0.21, 0.2.3 → 0.2.4, 1.4.0 → 1.4.1).
+ * - Asked for a new 0.x.0 line: `nextMinorVersion`. The patch resets to 0
+ *   every time (0.0.20 → 0.1.0, 0.1.7 → 0.2.0, 1.3.4 → 1.4.0). Do not keep
+ *   counting the old 0.0.x series.
+ * - Asked for a new x.0.0 line: `nextMajorVersion`. Minor and patch both
+ *   reset (0.4.2 → 1.0.0, 1.8.6 → 2.0.0). This is any major, not only 1.0.0.
+ * - After either reset, the next default bump is the new line’s patch
+ *   (0.2.0 → 0.2.1, 3.0.0 → 3.0.1).
+ *
+ * Copy is for players (Added / Updated / Removed): short, concrete, no file
+ * or protocol jargon. Skip a new entry when nothing player-visible changed.
  */
 
 export interface UpdateNotes {
-  /** Display / compare id, e.g. "0.0.12" */
+  /** Display id, e.g. "0.0.21" or "0.1.0". Not the PR number. */
   version: string
+  /** GitHub PR that shipped this note. Reference only. */
   pr: number
   title: string
   added: string[]
@@ -170,6 +187,44 @@ export function compareVersions(a: string, b: string): number {
 
 export function latestVersion(): string | null {
   return UPDATES[0]?.version ?? null
+}
+
+function versionParts(current: string | null | undefined): [number, number, number] | null {
+  if (!current) return null
+  const parts = current.split('.').map((n) => Number.parseInt(n, 10))
+  if (parts.length === 0 || parts.some((n) => !Number.isFinite(n))) return null
+  while (parts.length < 3) parts.push(0)
+  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
+}
+
+/**
+ * Next note on the current line. Does not read the PR number.
+ * 0.0.20 → 0.0.21, 0.2.0 → 0.2.1, 1.4.0 → 1.4.1.
+ */
+export function nextPatchVersion(current: string | null | undefined): string {
+  const parts = versionParts(current)
+  if (!parts) return '0.0.1'
+  return `${parts[0]}.${parts[1]}.${parts[2] + 1}`
+}
+
+/**
+ * New 0.x.0 (or x.y.0) line. Patch resets to 0 every time.
+ * 0.0.20 → 0.1.0, 0.1.7 → 0.2.0, 1.3.4 → 1.4.0.
+ */
+export function nextMinorVersion(current: string | null | undefined): string {
+  const parts = versionParts(current)
+  if (!parts) return '0.1.0'
+  return `${parts[0]}.${parts[1] + 1}.0`
+}
+
+/**
+ * New x.0.0 line. Minor and patch both reset.
+ * 0.0.20 → 1.0.0, 0.4.2 → 1.0.0, 1.8.6 → 2.0.0.
+ */
+export function nextMajorVersion(current: string | null | undefined): string {
+  const parts = versionParts(current)
+  if (!parts) return '1.0.0'
+  return `${parts[0] + 1}.0.0`
 }
 
 /** Unseen updates, newest → oldest. */
