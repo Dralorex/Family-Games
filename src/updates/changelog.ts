@@ -7,9 +7,15 @@
  *
  * PR path (always first):
  * 1. List open PRs against main.
- * 2. If one already covers this work, stay on that branch. Edit that entry’s
- *    bullets only. Do not open another PR and do not bump `version`.
- * 3. If none covers it, branch from main, open one PR, then add a new entry
+ * 2. Ignore PR #4 (accounts scaffold, `cursor/auth-accounts-scaffold-ac3a`).
+ *    It stays its own pull request. Do not add other work to it, and do not
+ *    treat it as the open PR to extend. Touch it only when someone explicitly
+ *    says to continue accounts on that PR. If #4 is the only open PR, open a
+ *    new one from main.
+ * 3. If another open PR already covers this work, stay on that branch. Edit
+ *    that entry’s bullets only. Do not open another PR and do not bump
+ *    `version`.
+ * 4. If none covers it, branch from main, open one PR, then add a new entry
  *    at the top of UPDATES.
  *
  * Version on that new entry (`pr` is the real PR number and may differ):
