@@ -41,7 +41,7 @@ GitHub Actions deploys `main` to GitHub Pages. Enable **Settings → Pages → S
 
 After a deploy, the first time someone opens Home they may see a **What’s new** overlay (`UP #0.0.<PR#>`). Notes live in `src/updates/changelog.ts`.
 
-When shipping changes: check open PRs first — if this work already has an open PR, edit that entry on that branch; if everything is merged, open a new PR and add a new top entry using that PR’s number.
+When shipping changes: check open PRs first. If one already covers this work, stay on that branch and edit that note. PR #4 (accounts scaffold) does not count — leave it alone unless someone explicitly says to continue accounts on that PR. If #4 is the only open PR, open a new one from main. A new PR gets a new top note; the version is the next patch, not the PR number.
 
 ## Sync note
 
