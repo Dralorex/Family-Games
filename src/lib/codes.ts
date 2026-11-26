@@ -21,12 +21,20 @@ export function createPlayerId(): string {
   return id
 }
 
-/** Per-tab session for a room — used to kick the previous browser on same-name claim. */
+/**
+ * Per-device session for a room. Stored in localStorage so leaving the
+ * browser or app does not look like a different phone and drop the seat.
+ */
 export function createSessionId(code: string): string {
   const key = `fg_sess_${code}`
-  const existing = sessionStorage.getItem(key)
-  if (existing) return existing
+  const fromLocal = localStorage.getItem(key)
+  if (fromLocal) return fromLocal
+  const fromSession = sessionStorage.getItem(key)
+  if (fromSession) {
+    localStorage.setItem(key, fromSession)
+    return fromSession
+  }
   const id = crypto.randomUUID()
-  sessionStorage.setItem(key, id)
+  localStorage.setItem(key, id)
   return id
 }

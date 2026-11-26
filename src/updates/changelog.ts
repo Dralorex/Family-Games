@@ -41,6 +41,20 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.21',
+    pr: 22,
+    title: 'Stay in the game, first place, and rankings',
+    added: [
+      'Score tab can switch between the scorecard and a top-to-bottom ranking',
+    ],
+    updated: [
+      'Leaving the site or app keeps you in the game and still active',
+      'The big score on Main shows who is in first, with their name and score',
+      'The corner still shows your name and your score',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.20',
     pr: 20,
     title: 'Scorecard This Round / Next Round mid-join',
