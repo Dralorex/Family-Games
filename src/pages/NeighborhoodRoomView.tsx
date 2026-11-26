@@ -101,28 +101,18 @@ export function NeighborhoodRoomView(props: {
     return () => clearInterval(id)
   }, [])
 
-  // Mark this phone away / back for disconnect grace
+  // Switching away from the site or app keeps this phone active.
+  // If a previous visit was marked away, clear that as soon as we're here.
   useEffect(() => {
     if (!room.game || room.status === 'lobby') return
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') {
-        send({ type: 'nb-player-away', fromId: playerId, at: Date.now() })
-      }
+    const markBack = () => {
+      if (document.visibilityState !== 'visible') return
+      const away = room.game?.awayAt?.[playerId]
+      if (away != null) send({ type: 'nb-player-back', fromId: playerId })
     }
-    const onShow = () => {
-      if (document.visibilityState === 'visible') {
-        send({ type: 'nb-player-back', fromId: playerId })
-      }
-    }
-    const onPageHide = () => send({ type: 'nb-player-away', fromId: playerId, at: Date.now() })
-    document.addEventListener('visibilitychange', onHide)
-    document.addEventListener('visibilitychange', onShow)
-    window.addEventListener('pagehide', onPageHide)
-    return () => {
-      document.removeEventListener('visibilitychange', onHide)
-      document.removeEventListener('visibilitychange', onShow)
-      window.removeEventListener('pagehide', onPageHide)
-    }
+    markBack()
+    document.addEventListener('visibilitychange', markBack)
+    return () => document.removeEventListener('visibilitychange', markBack)
   }, [room.game, room.status, playerId, send])
 
   const hostAwayRemaining =

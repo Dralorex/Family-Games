@@ -3,8 +3,9 @@ import { HOST_AWAY_MS, shouldAutoClaimHost } from '../rooms/reducer'
 import type { RoomAction, RoomState } from '../rooms/types'
 
 /**
- * Host swipe-out → host-away. Return → host-back.
- * Next-in-line auto claim-host after 5 min, or immediately if the game already finished.
+ * Leaving the site or app does not mark the host away.
+ * If an older session already flagged them away, coming back clears it.
+ * Next-in-line can still claim after a real host-away timeout.
  */
 export function useHostPresence(opts: {
   room: RoomState | null
@@ -17,25 +18,15 @@ export function useHostPresence(opts: {
     if (!room || room.status === 'closed') return
     const isHost = room.hostId === playerId
 
-    const onHide = () => {
-      if (document.visibilityState === 'hidden' && room.hostId === playerId) {
-        send({ type: 'host-away', fromId: playerId })
-      }
-    }
-    const onShow = () => {
-      if (document.visibilityState === 'visible' && room.hostId === playerId && room.hostAwayAt) {
+    const markBack = () => {
+      if (document.visibilityState !== 'visible') return
+      if (room.hostId === playerId && room.hostAwayAt) {
         send({ type: 'host-back', fromId: playerId })
       }
     }
-    const onPageHide = () => {
-      if (room.hostId === playerId) {
-        send({ type: 'host-away', fromId: playerId })
-      }
-    }
 
-    document.addEventListener('visibilitychange', onHide)
-    document.addEventListener('visibilitychange', onShow)
-    window.addEventListener('pagehide', onPageHide)
+    markBack()
+    document.addEventListener('visibilitychange', markBack)
 
     const tick = window.setInterval(() => {
       if (!room.hostAwayAt) return
@@ -51,9 +42,7 @@ export function useHostPresence(opts: {
     }
 
     return () => {
-      document.removeEventListener('visibilitychange', onHide)
-      document.removeEventListener('visibilitychange', onShow)
-      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', markBack)
       window.clearInterval(tick)
     }
   }, [

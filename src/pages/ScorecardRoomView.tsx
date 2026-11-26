@@ -13,6 +13,7 @@ import {
   allScoresEntered,
   computeStandings,
   missingScorePlayerIds,
+  placeLabel,
   playerTotal,
   shouldShowHeroTotal,
   shouldShowPlace,
@@ -48,12 +49,11 @@ export function ScorecardRoomView(props: {
   const active = players.filter((p) => !p.left)
   const [showHostLeave, setShowHostLeave] = useState(false)
   const standings = computeStandings(players, room.scores, room.winDirection)
-  const myStanding = standings.find((s) => s.playerId === playerId)
+  const leaders = standings.filter((s) => s.place === 1)
   const myTotal = playerTotal(room.scores, playerId)
   const hasAnyScore = Object.values(room.scores).some((r) => Object.keys(r).length > 0)
   const showHero = shouldShowHeroTotal(room.completedRounds, hasAnyScore)
   const showPlace = shouldShowPlace(room.completedRounds, hasAnyScore) || room.status === 'finished'
-  const showHeroName = room.completedRounds >= 1 || room.status === 'finished'
   const missing = missingScorePlayerIds(players, room.scores, room.currentRound)
   const ready = allScoresEntered(players, room.scores, room.currentRound)
 
@@ -68,6 +68,7 @@ export function ScorecardRoomView(props: {
   const entryTarget = controlled[Math.min(entryIndex, Math.max(0, controlled.length - 1))]
   const [draft, setDraft] = useState('')
   const [showOthers, setShowOthers] = useState(true)
+  const [scorePane, setScorePane] = useState<'card' | 'rank'>('card')
   const [addName, setAddName] = useState('')
   const [addError, setAddError] = useState('')
   const exportRef = useRef<HTMLDivElement>(null)
@@ -239,12 +240,11 @@ export function ScorecardRoomView(props: {
         <h1 className="room-title">{room.title}</h1>
       </div>
       <div className="top-right-place">
-        {showPlace && myStanding && me ? (
+        {me ? (
           <span>
-            {me.name} · #{myStanding.place}
+            {me.name}
+            {showHero ? ` · ${myTotal}` : ''}
           </span>
-        ) : me ? (
-          <span className="muted-inline">{me.name}</span>
         ) : (
           <span className="muted-inline">—</span>
         )}
@@ -351,11 +351,13 @@ export function ScorecardRoomView(props: {
       {(room.status === 'playing' || room.status === 'finished') && (
         <div className="bubble hero-bubble">
           <div className="hero-score">
-            <div className="hero-score-main">
-              <span className="hero-number">{showHero ? myTotal : '—'}</span>
-              {showPlace && myStanding ? <span className="hero-place">#{myStanding.place}</span> : null}
-            </div>
-            {showHeroName ? <p className="muted">{me?.name ?? 'You'}</p> : null}
+            <p className="hero-kicker">In First</p>
+            <p className="hero-leader-name">
+              {showPlace && leaders.length > 0 ? leaders.map((s) => s.name).join(' & ') : '—'}
+            </p>
+            <span className="hero-number">
+              {showHero && leaders[0] ? leaders[0].total : '—'}
+            </span>
           </div>
         </div>
       )}
@@ -496,30 +498,69 @@ export function ScorecardRoomView(props: {
   const score = (
     <div className="scorecard-main-stack">
       {header}
-      <div className="bubble">
-        <div className="row-between">
-          <h2>Scorecard</h2>
-          <button type="button" className="btn secondary" onClick={() => setShowOthers((v) => !v)}>
-            {showOthers ? 'Hide others' : 'Show all players'}
-          </button>
-        </div>
-        <ScorecardTable
-          room={room}
-          focusPlayerId={playerId}
-          showOthers={showOthers}
-          exportRef={exportRef}
-        />
-        {(room.status === 'finished' || room.status === 'playing') && (
-          <button
-            type="button"
-            className="btn secondary"
-            disabled={savingPhoto}
-            onClick={() => void savePhoto()}
-          >
-            {savingPhoto ? 'Saving photo…' : 'Save scorecard photo'}
-          </button>
-        )}
+      <div className="score-pane-tabs" role="tablist" aria-label="Score views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={scorePane === 'card'}
+          className={scorePane === 'card' ? 'active' : ''}
+          onClick={() => setScorePane('card')}
+        >
+          Scorecard
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={scorePane === 'rank'}
+          className={scorePane === 'rank' ? 'active' : ''}
+          onClick={() => setScorePane('rank')}
+        >
+          Ranking
+        </button>
       </div>
+      {scorePane === 'card' ? (
+        <div className="bubble">
+          <div className="row-between">
+            <h2>Scorecard</h2>
+            <button type="button" className="btn secondary" onClick={() => setShowOthers((v) => !v)}>
+              {showOthers ? 'Hide others' : 'Show all players'}
+            </button>
+          </div>
+          <ScorecardTable
+            room={room}
+            focusPlayerId={playerId}
+            showOthers={showOthers}
+            exportRef={exportRef}
+          />
+          {(room.status === 'finished' || room.status === 'playing') && (
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={savingPhoto}
+              onClick={() => void savePhoto()}
+            >
+              {savingPhoto ? 'Saving photo…' : 'Save scorecard photo'}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="bubble">
+          <h2>Ranking</h2>
+          {standings.length === 0 ? (
+            <p className="muted">No players yet.</p>
+          ) : (
+            <ol className="rank-list">
+              {standings.map((s) => (
+                <li key={s.playerId} className={s.playerId === playerId ? 'me' : undefined}>
+                  <span className="rank-place">{placeLabel(s.place)}</span>
+                  <span className="rank-name">{s.name}</span>
+                  <span className="rank-score">{showHero ? s.total : '—'}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
     </div>
   )
 

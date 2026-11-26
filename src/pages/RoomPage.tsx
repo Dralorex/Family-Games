@@ -162,14 +162,41 @@ export function RoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, kicked, room?.code, playerId, sessionId, status, seatedHere, hostParam])
 
+  // Coming back to the site or app re-seats this phone as active.
+  useEffect(() => {
+    const onShow = () => {
+      if (document.visibilityState !== 'visible' || !name || kicked) return
+      const reclaimHost =
+        hostParam ||
+        (room
+          ? room.creatorName.trim().toLowerCase() === name.trim().toLowerCase()
+          : false)
+      const seated = room?.players[playerId]
+      const needsSeat =
+        !room || !seated || seated.left || (seated.sessionId != null && seated.sessionId !== sessionId)
+      if (!needsSeat) return
+      send({
+        type: 'join',
+        player: {
+          id: playerId,
+          name,
+          joinedAt: seated?.joinedAt ?? Date.now(),
+          sessionId,
+        },
+        reclaimHost,
+      })
+    }
+    document.addEventListener('visibilitychange', onShow)
+    return () => document.removeEventListener('visibilitychange', onShow)
+  }, [name, kicked, hostParam, room, playerId, sessionId, send])
+
   // Detect kicked by another browser using the same name
   useEffect(() => {
     if (!name || !room || kicked) return
     const mine = room.players[playerId]
     if (mine) {
-      if (mine.sessionId && mine.sessionId !== sessionId) {
-        setKicked(true)
-      }
+      // Same phone coming back (new tab session) reclaims this seat via join.
+      // Do not treat that as "signed in elsewhere".
       return
     }
     const sameName = Object.values(room.players).find(
