@@ -16,7 +16,6 @@ import {
 } from '../core/neighborhood/types'
 import {
   allScoresEntered,
-  lastPlacePlayerId,
   nameTaken,
   shouldEndGame,
   worstScoreForRound,
@@ -45,42 +44,69 @@ function canControl(room: RoomState, fromId: string, targetId: string): boolean 
   return Boolean(target && target.controlledBy === fromId)
 }
 
+/** Soft-left seats and mid-join “Next Round” seats get the worst score for this round. */
 function fillLeftPlayersForRound(room: ScorecardRoom, round: number): ScorecardRoom {
-  const active = activeList(room)
-  const worst = worstScoreForRound(
-    room.scores,
-    active.map((p) => p.id),
-    round,
-    room.winDirection,
-  )
+  const scoringIds = activeList(room)
+    .filter((p) => !p.joinNextRound)
+    .map((p) => p.id)
+  const worst = worstScoreForRound(room.scores, scoringIds, round, room.winDirection)
   let scores = room.scores
+  let players = room.players
   for (const p of playersList(room)) {
-    if (!p.left) continue
-    if (scores[p.id]?.[round] !== undefined) continue
-    scores = {
-      ...scores,
-      [p.id]: { ...(scores[p.id] ?? {}), [round]: worst },
+    const deferred = Boolean(p.joinNextRound)
+    if (!p.left && !deferred) continue
+    if (scores[p.id]?.[round] === undefined) {
+      scores = {
+        ...scores,
+        [p.id]: { ...(scores[p.id] ?? {}), [round]: worst },
+      }
+    }
+    if (deferred) {
+      players = {
+        ...players,
+        [p.id]: { ...players[p.id]!, joinNextRound: false, needsRoundJoinChoice: false },
+      }
     }
   }
-  return { ...room, scores }
+  return { ...room, scores, players }
 }
 
-function copyLastPlaceScores(
-  room: ScorecardRoom,
-  newPlayerId: string,
-  throughRound: number,
-): ScorecardRoom {
-  if (throughRound < 1) return room
-  const others = playersList(room).filter((p) => p.id !== newPlayerId && !p.left)
-  if (others.length === 0) return room
-  const lastId = lastPlacePlayerId(others, room.scores, room.winDirection, throughRound)
-  if (!lastId) return room
-  const src = room.scores[lastId] ?? {}
-  const copied: Record<number, number> = { ...(room.scores[newPlayerId] ?? {}) }
-  for (let r = 1; r <= throughRound; r++) {
-    if (src[r] !== undefined) copied[r] = src[r]!
+function withRoundJoinPrompt(player: RoomPlayer, ask: boolean): RoomPlayer {
+  if (!ask) {
+    return {
+      ...player,
+      needsRoundJoinChoice: false,
+      joinNextRound: false,
+    }
   }
-  return { ...room, scores: { ...room.scores, [newPlayerId]: copied } }
+  return {
+    ...player,
+    needsRoundJoinChoice: true,
+    joinNextRound: false,
+  }
+}
+
+/** One missed round gets that round’s worst score. Earlier rounds stay blank. */
+function applyMissedRoundScore(
+  room: ScorecardRoom,
+  playerId: string,
+  round: number,
+): ScorecardRoom {
+  if (round < 1) return room
+  if (room.scores[playerId]?.[round] !== undefined) return room
+  const ids = playersList(room)
+    .filter((p) => p.id !== playerId && !p.left)
+    .map((p) => p.id)
+  const hasAny = ids.some((id) => typeof room.scores[id]?.[round] === 'number')
+  if (!hasAny) return room
+  const worst = worstScoreForRound(room.scores, ids, round, room.winDirection)
+  return {
+    ...room,
+    scores: {
+      ...room.scores,
+      [playerId]: { ...(room.scores[playerId] ?? {}), [round]: worst },
+    },
+  }
 }
 
 /** Keep past rounds; clear the open round so a returning player enters their own score. */
@@ -202,6 +228,15 @@ function takeOverSeat(
     }
     if (wasLeft) {
       sc = continueFromCurrentRound(sc, playerId)
+      if (sc.status === 'playing') {
+        sc = {
+          ...sc,
+          players: {
+            ...sc.players,
+            [playerId]: withRoundJoinPrompt(sc.players[playerId]!, true),
+          },
+        }
+      }
     }
     if (wasLeft && isCreator && sc.hostId !== playerId && !reclaimHost) {
       sc = { ...sc, pendingHostReturn: { playerId, name: revived.name } }
@@ -343,6 +378,15 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
           next = { ...next, hostId: action.player.id, pendingHostReturn: null }
         } else if (next.kind === 'scorecard' && existingById.left) {
           next = continueFromCurrentRound(next, action.player.id)
+          if (next.status === 'playing') {
+            next = {
+              ...next,
+              players: {
+                ...next.players,
+                [action.player.id]: withRoundJoinPrompt(next.players[action.player.id]!, true),
+              },
+            }
+          }
           if (isCreator && next.hostId !== action.player.id) {
             next = {
               ...next,
@@ -402,11 +446,15 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
           return room
         }
       }
+      const askRoundChoice = room.kind === 'scorecard' && room.status === 'playing'
       let next: RoomState = {
         ...room,
         players: {
           ...room.players,
-          [action.player.id]: { ...action.player, left: false, sessionId },
+          [action.player.id]: withRoundJoinPrompt(
+            { ...action.player, left: false, sessionId },
+            askRoundChoice,
+          ),
         },
       }
       if (room.kind === 'hot-potato') {
@@ -418,9 +466,6 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
               ? hp.aliveIds
               : [...hp.aliveIds, action.player.id]
         return { ...hp, aliveIds }
-      }
-      if (room.kind === 'scorecard' && room.status === 'playing' && room.completedRounds >= 1) {
-        next = copyLastPlaceScores(next as ScorecardRoom, action.player.id, room.completedRounds)
       }
       if (room.kind === 'neighborhood' && room.game && isOpenJoin(room.game)) {
         const nb = next as NeighborhoodRoom
@@ -576,19 +621,58 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
       if (room.kind !== 'scorecard') return room
       if (!room.players[action.fromId] || room.players[action.fromId]!.left) return room
       if (nameTaken(room.players, action.player.name)) return room
-      const seat: RoomPlayer = {
-        ...action.player,
-        controlledBy: action.fromId,
-        left: false,
-      }
-      let next: ScorecardRoom = {
+      const seat: RoomPlayer = withRoundJoinPrompt(
+        {
+          ...action.player,
+          controlledBy: action.fromId,
+          left: false,
+        },
+        room.status === 'playing',
+      )
+      return {
         ...room,
         players: { ...room.players, [seat.id]: seat },
       }
-      if (room.status === 'playing' && room.completedRounds >= 1) {
-        next = copyLastPlaceScores(next, seat.id, room.completedRounds)
+    }
+
+    case 'set-round-join-choice': {
+      if (room.kind !== 'scorecard' || room.status !== 'playing') return room
+      if (!canControl(room, action.fromId, action.targetPlayerId)) return room
+      const target = room.players[action.targetPlayerId]
+      if (!target || target.left || !target.needsRoundJoinChoice) return room
+      if (action.choice === 'this-round') {
+        const seated: ScorecardRoom = {
+          ...room,
+          players: {
+            ...room.players,
+            [action.targetPlayerId]: {
+              ...target,
+              needsRoundJoinChoice: false,
+              joinNextRound: false,
+            },
+          },
+        }
+        return applyMissedRoundScore(seated, action.targetPlayerId, room.currentRound - 1)
       }
-      return next
+      // Next Round — clear any open-round score so worst is applied at advance
+      let scores = room.scores
+      const existing = scores[action.targetPlayerId]
+      if (existing && existing[room.currentRound] !== undefined) {
+        const { [room.currentRound]: _drop, ...kept } = existing
+        scores = { ...scores, [action.targetPlayerId]: kept }
+      }
+      return {
+        ...room,
+        scores,
+        players: {
+          ...room.players,
+          [action.targetPlayerId]: {
+            ...target,
+            needsRoundJoinChoice: false,
+            joinNextRound: true,
+          },
+        },
+      }
     }
 
     case 'set-timer-range': {
@@ -677,6 +761,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
       if (!canControl(room, action.fromId, action.targetPlayerId)) return room
       const target = room.players[action.targetPlayerId]
       if (!target || target.left) return room
+      if (target.needsRoundJoinChoice || target.joinNextRound) return room
       if (action.round !== room.currentRound) return room
       const playerScores = {
         ...(room.scores[action.targetPlayerId] ?? {}),

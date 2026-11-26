@@ -43,17 +43,18 @@ export function activePlayers<T extends { left?: boolean }>(players: T[]): T[] {
 }
 
 export function missingScorePlayerIds(
-  players: { id: string; left?: boolean }[],
+  players: { id: string; left?: boolean; joinNextRound?: boolean }[],
   scores: ScoreMap,
   round: number,
 ): string[] {
   return activePlayers(players)
+    .filter((p) => !p.joinNextRound)
     .filter((p) => scores[p.id]?.[round] === undefined)
     .map((p) => p.id)
 }
 
 export function allScoresEntered(
-  players: { id: string; left?: boolean }[],
+  players: { id: string; left?: boolean; joinNextRound?: boolean }[],
   scores: ScoreMap,
   round: number,
 ): boolean {
@@ -96,6 +97,23 @@ export function shouldEndGame(opts: {
     return limitReached(opts.players, opts.scores, opts.pointLimit)
   }
   return false
+}
+
+/** 1 → 1st, 2 → 2nd, 3 → 3rd, 11 → 11th. */
+export function placeLabel(place: number): string {
+  const n = Math.abs(Math.trunc(place))
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`
+  switch (n % 10) {
+    case 1:
+      return `${n}st`
+    case 2:
+      return `${n}nd`
+    case 3:
+      return `${n}rd`
+    default:
+      return `${n}th`
+  }
 }
 
 export function topThree(standings: Standing[]): Standing[] {

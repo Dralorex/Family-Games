@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { CodeDropdown } from '../components/CodeDropdown'
 import { HostLeaveModal } from '../components/HostLeaveModal'
 import { HostReturnPrompt } from '../components/HostReturnPrompt'
+import { NeighborhoodTradeModal } from '../components/NeighborhoodTradeModal'
 import { TabShell, type RoomTab } from '../components/TabShell'
 import {
   allianceGroupIds,
@@ -19,7 +20,7 @@ import { unlockAudio } from '../audio/neighborhood'
 import { HOST_AWAY_MS, neighborhoodLobbyReady } from '../rooms/reducer'
 import type { NeighborhoodRoom } from '../rooms/types'
 import { useRoom } from '../hooks/useRoom'
-import { trayIdForPlayer } from '../core/neighborhood/engine'
+import { canTapTray, trayIdForPlayer } from '../core/neighborhood/engine'
 import { NeighborhoodManagePanel } from './NeighborhoodManagePanel'
 import { NeighborhoodPieceIcon } from './NeighborhoodPieceIcon'
 import { NeighborhoodPlayPanel, NeighborhoodScorePanel } from './NeighborhoodPlayPanel'
@@ -55,35 +56,63 @@ export function NeighborhoodRoomView(props: {
   const [showLeaveGift, setShowLeaveGift] = useState(false)
   const [muted, setMuted] = useState(() => getNeighborhoodMuted())
   const [now, setNow] = useState(() => Date.now())
+  const [composeTrade, setComposeTrade] = useState(false)
+  const [hideIncomingTrade, setHideIncomingTrade] = useState(false)
   const navigate = useNavigate()
+
+  const tradePrompt = room.game?.prompt?.type === 'trade' ? room.game.prompt : null
+  const myTrayId = trayIdForPlayer(room.rules, playerId, room.teamOf)
+  const tradeInvolvesMe =
+    Boolean(tradePrompt) &&
+    (tradePrompt!.fromTrayId === myTrayId || tradePrompt!.toTrayId === myTrayId)
+  const tradeAwaitingMe = Boolean(
+    room.game &&
+      tradePrompt?.frozen &&
+      tradePrompt.awaitingTrayId &&
+      canTapTray(room.game, playerId, tradePrompt.awaitingTrayId),
+  )
+
+  useEffect(() => {
+    // Re-show the popup whenever a new frozen offer lands for this seat.
+    if (tradeAwaitingMe) setHideIncomingTrade(false)
+  }, [tradeAwaitingMe, tradePrompt?.frozen, room.game?.lastEventId])
+
+  useEffect(() => {
+    // After Counter, open the composer so this seat can edit and resend.
+    if (
+      tradePrompt &&
+      !tradePrompt.frozen &&
+      tradePrompt.fromTrayId === myTrayId &&
+      tradePrompt.awaitingTrayId == null
+    ) {
+      setComposeTrade(true)
+    }
+  }, [
+    myTrayId,
+    tradePrompt?.frozen,
+    tradePrompt?.fromTrayId,
+    tradePrompt?.awaitingTrayId,
+    tradePrompt?.offerCash,
+    tradePrompt?.askCash,
+  ])
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
 
-  // Mark this phone away / back for disconnect grace
+  // Switching away from the site or app keeps this phone active.
+  // If a previous visit was marked away, clear that as soon as we're here.
   useEffect(() => {
     if (!room.game || room.status === 'lobby') return
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') {
-        send({ type: 'nb-player-away', fromId: playerId, at: Date.now() })
-      }
+    const markBack = () => {
+      if (document.visibilityState !== 'visible') return
+      const away = room.game?.awayAt?.[playerId]
+      if (away != null) send({ type: 'nb-player-back', fromId: playerId })
     }
-    const onShow = () => {
-      if (document.visibilityState === 'visible') {
-        send({ type: 'nb-player-back', fromId: playerId })
-      }
-    }
-    const onPageHide = () => send({ type: 'nb-player-away', fromId: playerId, at: Date.now() })
-    document.addEventListener('visibilitychange', onHide)
-    document.addEventListener('visibilitychange', onShow)
-    window.addEventListener('pagehide', onPageHide)
-    return () => {
-      document.removeEventListener('visibilitychange', onHide)
-      document.removeEventListener('visibilitychange', onShow)
-      window.removeEventListener('pagehide', onPageHide)
-    }
+    markBack()
+    document.addEventListener('visibilitychange', markBack)
+    return () => document.removeEventListener('visibilitychange', markBack)
   }, [room.game, room.status, playerId, send])
 
   const hostAwayRemaining =
@@ -417,8 +446,13 @@ export function NeighborhoodRoomView(props: {
       <NeighborhoodScorePanel room={room} />
       {room.status === 'playing' ? (
         <>
-          <h2 className="section-heading">Manage</h2>
-          <NeighborhoodManagePanel room={room} playerId={playerId} send={send} />
+          <h2 className="section-heading">Your holdings</h2>
+          <NeighborhoodManagePanel
+            room={room}
+            playerId={playerId}
+            send={send}
+            onOpenTrade={() => setComposeTrade(true)}
+          />
         </>
       ) : null}
     </div>
@@ -478,14 +512,40 @@ export function NeighborhoodRoomView(props: {
     </div>
   )
 
+  const showIncomingTrade =
+    tradeInvolvesMe &&
+    tradePrompt &&
+    (tradeAwaitingMe || tradePrompt.frozen) &&
+    !hideIncomingTrade &&
+    !composeTrade
+
   return (
     <main className="page room-page">
+      {composeTrade ? (
+        <NeighborhoodTradeModal
+          room={room}
+          playerId={playerId}
+          send={send}
+          mode="compose"
+          onClose={() => setComposeTrade(false)}
+        />
+      ) : null}
+      {showIncomingTrade ? (
+        <NeighborhoodTradeModal
+          room={room}
+          playerId={playerId}
+          send={send}
+          mode="prompt"
+          onClose={() => setHideIncomingTrade(true)}
+        />
+      ) : null}
       <TabShell
         main={main}
         score={score}
         settings={settings}
         tab={props.tab}
         onTab={props.onTab}
+        scoreLabel="Deeds"
       />
     </main>
   )

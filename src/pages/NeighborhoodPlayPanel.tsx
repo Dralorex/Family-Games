@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { NeighborhoodSpaceModal } from '../components/NeighborhoodSpaceModal'
 import { spaceAt } from '../core/neighborhood/board'
 import type { NbCinematic } from '../core/neighborhood/cinematics'
 import { bareDeedIndexes, deedCreditValue } from '../core/neighborhood/economy'
@@ -32,10 +33,16 @@ export function NeighborhoodPlayPanel(props: {
   const [debtDeeds, setDebtDeeds] = useState<number[]>([])
   const [debtCash, setDebtCash] = useState(0)
   const [stepVisual, setStepVisual] = useState<{ trayId: string; to: number } | null>(null)
+  const [movementPending, setMovementPending] = useState(false)
+  const [inspectIndex, setInspectIndex] = useState<number | null>(null)
 
   const onCinemaActive = useCallback((cine: NbCinematic | null) => {
     if (cine?.kind === 'step') setStepVisual({ trayId: cine.trayId, to: cine.to })
     else setStepVisual(null)
+  }, [])
+
+  const onMovementPending = useCallback((pending: boolean) => {
+    setMovementPending(pending)
   }, [])
 
   if (!game) {
@@ -47,9 +54,13 @@ export function NeighborhoodPlayPanel(props: {
   const turnId = currentTrayId(game)
   const myTurn = Boolean(turnId && canTapTray(game, playerId, turnId))
   const prompt = game.prompt
+  const promptsReady = !movementPending
 
   const opening = game.phase === 'opening'
   const needsOpening = opening && game.openingNeeds.includes(myTrayId)
+
+  const showBuyModal =
+    promptsReady && prompt?.type === 'buy' && myTurn && !myTray?.spectating
 
   return (
     <div className="nb-play">
@@ -58,6 +69,7 @@ export function NeighborhoodPlayPanel(props: {
         playerId={playerId}
         pauseQueue={shouldPauseCinema(game)}
         onActiveChange={onCinemaActive}
+        onMovementPending={onMovementPending}
       />
       {game.lastDice ? (
         <p className="nb-dice" aria-live="polite">
@@ -111,33 +123,41 @@ export function NeighborhoodPlayPanel(props: {
             game={game}
             jackpotEnabled={room.rules.jackpot}
             stepVisual={stepVisual}
+            onSpaceClick={(i) => setInspectIndex(i)}
           />
+
+          {inspectIndex != null && !showBuyModal ? (
+            <NeighborhoodSpaceModal
+              room={room}
+              playerId={playerId}
+              spaceIndex={inspectIndex}
+              onClose={() => setInspectIndex(null)}
+            />
+          ) : null}
+
+          {showBuyModal && prompt?.type === 'buy' ? (
+            <NeighborhoodSpaceModal
+              room={room}
+              playerId={playerId}
+              spaceIndex={prompt.spaceIndex}
+              buyPrice={prompt.price}
+              send={send}
+              onClose={() => undefined}
+            />
+          ) : null}
 
           <div className="nb-actions">
             {myTray?.spectating ? (
               <p className="muted">Watching as a spectator.</p>
             ) : null}
-            {prompt?.type === 'buy' && myTurn ? (
-              <>
-                <p>
-                  Buy {spaceAt(prompt.spaceIndex).name} for {formatCash(prompt.price)}?
-                </p>
-                <div className="chip-row">
-                  <button type="button" className="btn primary" onClick={() => send({ type: 'nb-buy', fromId: playerId })}>
-                    Buy
-                  </button>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    onClick={() => send({ type: 'nb-decline-buy', fromId: playerId })}
-                  >
-                    {room.rules.noAuctions ? 'Decline' : 'Decline / Auction'}
-                  </button>
-                </div>
-              </>
+
+            {promptsReady && prompt?.type === 'buy' && !myTurn ? (
+              <p className="muted">
+                Waiting — buy offer on {spaceAt(prompt.spaceIndex).name}…
+              </p>
             ) : null}
 
-            {prompt?.type === 'tax' && myTurn ? (
+            {promptsReady && prompt?.type === 'tax' && myTurn ? (
               <>
                 <p>Town Tax — choose:</p>
                 <div className="chip-row">
@@ -159,7 +179,7 @@ export function NeighborhoodPlayPanel(props: {
               </>
             ) : null}
 
-            {prompt?.type === 'card' && myTurn ? (
+            {promptsReady && prompt?.type === 'card' && myTurn ? (
               <>
                 <p className="nb-card">{prompt.text}</p>
                 <button
@@ -172,7 +192,7 @@ export function NeighborhoodPlayPanel(props: {
               </>
             ) : null}
 
-            {prompt?.type === 'jail' && myTurn ? (
+            {promptsReady && prompt?.type === 'jail' && myTurn ? (
               <>
                 <p>You are in Jail.</p>
                 <div className="chip-row">
@@ -205,7 +225,7 @@ export function NeighborhoodPlayPanel(props: {
               </>
             ) : null}
 
-            {prompt?.type === 'auction' ? (
+            {promptsReady && prompt?.type === 'auction' ? (
               <>
                 <p>
                   Auction: {spaceAt(prompt.spaceIndex).name} · {formatCash(prompt.price)}
@@ -216,7 +236,10 @@ export function NeighborhoodPlayPanel(props: {
                     <button
                       type="button"
                       className="btn primary"
-                      disabled={(game.trays[prompt.turnTrayId]?.cash ?? 0) < (prompt.highTrayId ? prompt.price + prompt.step : prompt.step)}
+                      disabled={
+                        (game.trays[prompt.turnTrayId]?.cash ?? 0) <
+                        (prompt.highTrayId ? prompt.price + prompt.step : prompt.step)
+                      }
                       onClick={() => send({ type: 'nb-auction-raise', fromId: playerId })}
                     >
                       Raise {formatCash(prompt.step)}
@@ -235,14 +258,14 @@ export function NeighborhoodPlayPanel(props: {
               </>
             ) : null}
 
-            {prompt?.type === 'debt' && myTurn ? (
+            {promptsReady && prompt?.type === 'debt' && myTurn ? (
               <>
                 {prompt.toTrayId === 'bank' || prompt.toTrayId === 'jackpot' ? (
                   <>
                     <p className="warn-banner">
                       Owe {formatCash(prompt.amount)} to the{' '}
                       {prompt.toTrayId === 'jackpot' ? 'jackpot' : 'bank'} — {prompt.reason}. Cash
-                      only (sell/mortgage in Manage to raise cash). Deeds do not cover this debt.
+                      only (sell/mortgage in Deeds to raise cash). Deeds do not cover this debt.
                     </p>
                     <p className="muted">
                       Cash on hand: {formatCash(myTray?.cash ?? 0)} / {formatCash(prompt.amount)}
@@ -251,7 +274,7 @@ export function NeighborhoodPlayPanel(props: {
                 ) : (
                   <>
                     <p className="warn-banner">
-                      Owe {formatCash(prompt.amount)} — {prompt.reason}. Sell/mortgage in Manage,
+                      Owe {formatCash(prompt.amount)} — {prompt.reason}. Sell/mortgage in Deeds,
                       then select cover here.
                     </p>
                     <div className="chip-row">
@@ -327,57 +350,13 @@ export function NeighborhoodPlayPanel(props: {
               </>
             ) : null}
 
-            {prompt?.type === 'trade' ? (
-              <>
-                <p>
-                  Trade {trayLabel(room, prompt.fromTrayId)} → {trayLabel(room, prompt.toTrayId)}
-                  {prompt.frozen ? ' (frozen · waiting reply)' : ' (drafting)'}
-                </p>
-                <p className="muted">
-                  Offer {formatCash(prompt.offerCash)} + {prompt.offerDeeds.length} deeds
-                  {prompt.offerJailFreeWild + prompt.offerJailFreeNeighbor > 0
-                    ? ` + jail-free×${prompt.offerJailFreeWild + prompt.offerJailFreeNeighbor}`
-                    : ''}{' '}
-                  · Ask {formatCash(prompt.askCash)} + {prompt.askDeeds.length} deeds
-                  {prompt.askJailFreeWild + prompt.askJailFreeNeighbor > 0
-                    ? ` + jail-free×${prompt.askJailFreeWild + prompt.askJailFreeNeighbor}`
-                    : ''}
-                </p>
-                {prompt.frozen &&
-                prompt.awaitingTrayId &&
-                canTapTray(game, playerId, prompt.awaitingTrayId) ? (
-                  <div className="chip-row">
-                    <button
-                      type="button"
-                      className="btn primary"
-                      onClick={() => send({ type: 'nb-trade-accept', fromId: playerId })}
-                    >
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      onClick={() => send({ type: 'nb-trade-counter', fromId: playerId })}
-                    >
-                      Counter
-                    </button>
-                    <button
-                      type="button"
-                      className="btn danger"
-                      onClick={() => send({ type: 'nb-trade-decline', fromId: playerId })}
-                    >
-                      Decline
-                    </button>
-                  </div>
-                ) : (
-                  <p className="muted">Waiting on trade…</p>
-                )}
-              </>
+            {movementPending && prompt ? (
+              <p className="muted">Moving…</p>
             ) : null}
 
-            {!prompt && myTurn && myTray?.inJail ? (
+            {promptsReady && !prompt && myTurn && myTray?.inJail ? (
               <div className="chip-row">
-                {(myTray.jailFreeWild + myTray.jailFreeNeighbor > 0) ? (
+                {myTray.jailFreeWild + myTray.jailFreeNeighbor > 0 ? (
                   <button
                     type="button"
                     className="btn secondary"
@@ -413,7 +392,7 @@ export function NeighborhoodPlayPanel(props: {
               </div>
             ) : null}
 
-            {!prompt && myTurn && !myTray?.inJail ? (
+            {promptsReady && !prompt && myTurn && !myTray?.inJail ? (
               <button
                 type="button"
                 className="btn primary large"
@@ -426,7 +405,7 @@ export function NeighborhoodPlayPanel(props: {
               </button>
             ) : null}
 
-            {!prompt && !myTurn && game.phase === 'playing' ? (
+            {promptsReady && !prompt && !myTurn && game.phase === 'playing' ? (
               <p className="muted">Waiting for {turnId ? trayLabel(room, turnId) : 'turn'}…</p>
             ) : null}
           </div>

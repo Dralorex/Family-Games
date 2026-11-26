@@ -13,6 +13,7 @@ import {
 } from './economy'
 import { formatCash } from './money'
 import { availableCash, isDeedReserved } from './tradeReserve'
+import { formatTradeExchange } from './tradeSummary'
 import {
   endsOnFirstBankruptcy,
   STARTING_CASH,
@@ -544,15 +545,35 @@ function executeTrade(
     }
   }
   next = { ...next, deeds }
+  const fromName = trayName(next, prompt.fromTrayId, names)
+  const toName = trayName(next, prompt.toTrayId, names)
+  const exchange = formatTradeExchange({
+    fromName,
+    toName,
+    offer: {
+      cash: prompt.offerCash,
+      deeds: prompt.offerDeeds,
+      jailFreeWild: prompt.offerJailFreeWild,
+      jailFreeNeighbor: prompt.offerJailFreeNeighbor,
+    },
+    ask: {
+      cash: prompt.askCash,
+      deeds: prompt.askDeeds,
+      jailFreeWild: prompt.askJailFreeWild,
+      jailFreeNeighbor: prompt.askJailFreeNeighbor,
+    },
+  })
   next = appendCinematic(next, {
     kind: 'trade',
     fromTrayId: prompt.fromTrayId,
     toTrayId: prompt.toTrayId,
   })
-  return pushLog(
-    next,
-    `Trade: ${trayName(next, prompt.fromTrayId, names)} ↔ ${trayName(next, prompt.toTrayId, names)}.`,
-  )
+  next = appendCinematic(next, {
+    kind: 'toast',
+    text: exchange,
+    mood: 'info',
+  })
+  return pushLog(next, exchange)
 }
 
 function giftRemainder(

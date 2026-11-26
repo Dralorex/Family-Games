@@ -6,6 +6,7 @@ import { EndGameMenu } from '../components/EndGameMenu'
 import { HostLeaveModal } from '../components/HostLeaveModal'
 import { HostReturnPrompt } from '../components/HostReturnPrompt'
 import { Podium } from '../components/Podium'
+import { RoundJoinChoiceModal } from '../components/RoundJoinChoiceModal'
 import { ScorecardTable, exportScorecardPng } from '../components/ScorecardTable'
 import { TabShell, type RoomTab } from '../components/TabShell'
 import { defaultNextHostId } from '../rooms/reducer'
@@ -13,6 +14,7 @@ import {
   allScoresEntered,
   computeStandings,
   missingScorePlayerIds,
+  placeLabel,
   playerTotal,
   shouldShowHeroTotal,
   shouldShowPlace,
@@ -48,12 +50,11 @@ export function ScorecardRoomView(props: {
   const active = players.filter((p) => !p.left)
   const [showHostLeave, setShowHostLeave] = useState(false)
   const standings = computeStandings(players, room.scores, room.winDirection)
-  const myStanding = standings.find((s) => s.playerId === playerId)
+  const leaders = standings.filter((s) => s.place === 1)
   const myTotal = playerTotal(room.scores, playerId)
   const hasAnyScore = Object.values(room.scores).some((r) => Object.keys(r).length > 0)
   const showHero = shouldShowHeroTotal(room.completedRounds, hasAnyScore)
   const showPlace = shouldShowPlace(room.completedRounds, hasAnyScore) || room.status === 'finished'
-  const showHeroName = room.completedRounds >= 1 || room.status === 'finished'
   const missing = missingScorePlayerIds(players, room.scores, room.currentRound)
   const ready = allScoresEntered(players, room.scores, room.currentRound)
 
@@ -64,14 +65,34 @@ export function ScorecardRoomView(props: {
       ),
     [players, playerId],
   )
+  const scoreEntrySeats = useMemo(
+    () => controlled.filter((p) => !p.needsRoundJoinChoice && !p.joinNextRound),
+    [controlled],
+  )
+  const pendingRoundChoice = useMemo(
+    () => controlled.find((p) => p.needsRoundJoinChoice),
+    [controlled],
+  )
+  const deferredNextRound = useMemo(
+    () => controlled.filter((p) => p.joinNextRound),
+    [controlled],
+  )
   const [entryIndex, setEntryIndex] = useState(0)
-  const entryTarget = controlled[Math.min(entryIndex, Math.max(0, controlled.length - 1))]
+  const entryTarget =
+    scoreEntrySeats[Math.min(entryIndex, Math.max(0, scoreEntrySeats.length - 1))]
   const [draft, setDraft] = useState('')
   const [showOthers, setShowOthers] = useState(true)
+  const [scorePane, setScorePane] = useState<'card' | 'rank'>('card')
   const [addName, setAddName] = useState('')
   const [addError, setAddError] = useState('')
   const exportRef = useRef<HTMLDivElement>(null)
   const [savingPhoto, setSavingPhoto] = useState(false)
+
+  useEffect(() => {
+    if (entryIndex >= scoreEntrySeats.length && scoreEntrySeats.length > 0) {
+      setEntryIndex(0)
+    }
+  }, [entryIndex, scoreEntrySeats.length])
 
   useEffect(() => {
     if (!entryTarget) return
@@ -142,7 +163,7 @@ export function ScorecardRoomView(props: {
       round: room.currentRound,
       value,
     })
-    if (entryIndex < controlled.length - 1) {
+    if (entryIndex < scoreEntrySeats.length - 1) {
       setEntryIndex((i) => i + 1)
     }
   }
@@ -239,12 +260,11 @@ export function ScorecardRoomView(props: {
         <h1 className="room-title">{room.title}</h1>
       </div>
       <div className="top-right-place">
-        {showPlace && myStanding && me ? (
+        {me ? (
           <span>
-            {me.name} · #{myStanding.place}
+            {me.name}
+            {showHero ? ` · ${myTotal}` : ''}
           </span>
-        ) : me ? (
-          <span className="muted-inline">{me.name}</span>
         ) : (
           <span className="muted-inline">—</span>
         )}
@@ -277,6 +297,29 @@ export function ScorecardRoomView(props: {
           }
           onDecline={() =>
             send({ type: 'respond-host-return', fromId: playerId, accept: false })
+          }
+        />
+      ) : null}
+
+      {pendingRoundChoice ? (
+        <RoundJoinChoiceModal
+          playerName={pendingRoundChoice.name}
+          currentRound={room.currentRound}
+          onThisRound={() =>
+            send({
+              type: 'set-round-join-choice',
+              fromId: playerId,
+              targetPlayerId: pendingRoundChoice.id,
+              choice: 'this-round',
+            })
+          }
+          onNextRound={() =>
+            send({
+              type: 'set-round-join-choice',
+              fromId: playerId,
+              targetPlayerId: pendingRoundChoice.id,
+              choice: 'next-round',
+            })
           }
         />
       ) : null}
@@ -351,11 +394,13 @@ export function ScorecardRoomView(props: {
       {(room.status === 'playing' || room.status === 'finished') && (
         <div className="bubble hero-bubble">
           <div className="hero-score">
-            <div className="hero-score-main">
-              <span className="hero-number">{showHero ? myTotal : '—'}</span>
-              {showPlace && myStanding ? <span className="hero-place">#{myStanding.place}</span> : null}
-            </div>
-            {showHeroName ? <p className="muted">{me?.name ?? 'You'}</p> : null}
+            <p className="hero-kicker">In First</p>
+            <p className="hero-leader-name">
+              {showPlace && leaders.length > 0 ? leaders.map((s) => s.name).join(' & ') : '—'}
+            </p>
+            <span className="hero-number">
+              {showHero && leaders[0] ? leaders[0].total : '—'}
+            </span>
           </div>
         </div>
       )}
@@ -367,48 +412,62 @@ export function ScorecardRoomView(props: {
             {room.totalRounds ? ` / ${room.totalRounds}` : ''}
             {room.pointLimit ? ` · limit ${room.pointLimit}` : ''}
           </p>
-          {controlled.length > 1 ? (
+          {deferredNextRound.length > 0 ? (
             <p className="muted">
-              Entering for {entryTarget?.name} ({entryIndex + 1}/{controlled.length})
+              Starting next round:{' '}
+              {deferredNextRound.map((p) => p.name).join(', ')} (worst score this round)
             </p>
           ) : null}
-          <label className="field">
-            <span>{entryTarget ? `${entryTarget.name}'s score` : 'Your score'}</span>
-            <input
-              type="number"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitScore()
-              }}
-            />
-          </label>
-          {entryTarget &&
-          room.scores[entryTarget.id]?.[room.currentRound] !== undefined ? (
-            <p className="ok score-submitted" role="status">
-              Score submitted!
-            </p>
-          ) : null}
-          <button type="button" className="btn primary" onClick={submitScore}>
-            {entryTarget && room.scores[entryTarget.id]?.[room.currentRound] !== undefined
-              ? 'Update score'
-              : 'Submit score'}
-          </button>
-          {controlled.length > 1 ? (
-            <div className="chip-row">
-              {controlled.map((p, i) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`chip ${i === entryIndex ? 'selected' : ''}`}
-                  onClick={() => setEntryIndex(i)}
-                >
-                  {p.name}
-                  {room.scores[p.id]?.[room.currentRound] !== undefined ? ' ✓' : ''}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          {scoreEntrySeats.length > 0 ? (
+            <>
+              {scoreEntrySeats.length > 1 ? (
+                <p className="muted">
+                  Entering for {entryTarget?.name} ({entryIndex + 1}/{scoreEntrySeats.length})
+                </p>
+              ) : null}
+              <label className="field">
+                <span>{entryTarget ? `${entryTarget.name}'s score` : 'Your score'}</span>
+                <input
+                  type="number"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitScore()
+                  }}
+                />
+              </label>
+              {entryTarget &&
+              room.scores[entryTarget.id]?.[room.currentRound] !== undefined ? (
+                <p className="ok score-submitted" role="status">
+                  Score submitted!
+                </p>
+              ) : null}
+              <button type="button" className="btn primary" onClick={submitScore}>
+                {entryTarget && room.scores[entryTarget.id]?.[room.currentRound] !== undefined
+                  ? 'Update score'
+                  : 'Submit score'}
+              </button>
+              {scoreEntrySeats.length > 1 ? (
+                <div className="chip-row">
+                  {scoreEntrySeats.map((p, i) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`chip ${i === entryIndex ? 'selected' : ''}`}
+                      onClick={() => setEntryIndex(i)}
+                    >
+                      {p.name}
+                      {room.scores[p.id]?.[room.currentRound] !== undefined ? ' ✓' : ''}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : pendingRoundChoice ? (
+            <p className="muted">Choose This Round or Next Round to continue.</p>
+          ) : (
+            <p className="muted">You’re set for the next round — no score to enter now.</p>
+          )}
 
           <div className="add-player-row">
             <input
@@ -429,7 +488,14 @@ export function ScorecardRoomView(props: {
             <div className="gm-next">
               {!ready ? (
                 <p className="warn">
-                  Waiting on: {missing.map((id) => room.players[id]?.name ?? 'player').join(', ')}
+                  Waiting on:{' '}
+                  {missing
+                    .map((id) => {
+                      const p = room.players[id]
+                      if (!p) return 'player'
+                      return p.needsRoundJoinChoice ? `${p.name} (choose round)` : p.name
+                    })
+                    .join(', ')}
                 </p>
               ) : (
                 <p className="ok">Everyone has entered a score.</p>
@@ -502,30 +568,69 @@ export function ScorecardRoomView(props: {
   const score = (
     <div className="scorecard-main-stack">
       {header}
-      <div className="bubble">
-        <div className="row-between">
-          <h2>Scorecard</h2>
-          <button type="button" className="btn secondary" onClick={() => setShowOthers((v) => !v)}>
-            {showOthers ? 'Hide others' : 'Show all players'}
-          </button>
-        </div>
-        <ScorecardTable
-          room={room}
-          focusPlayerId={playerId}
-          showOthers={showOthers}
-          exportRef={exportRef}
-        />
-        {(room.status === 'finished' || room.status === 'playing') && (
-          <button
-            type="button"
-            className="btn secondary"
-            disabled={savingPhoto}
-            onClick={() => void savePhoto()}
-          >
-            {savingPhoto ? 'Saving photo…' : 'Save scorecard photo'}
-          </button>
-        )}
+      <div className="score-pane-tabs" role="tablist" aria-label="Score views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={scorePane === 'card'}
+          className={scorePane === 'card' ? 'active' : ''}
+          onClick={() => setScorePane('card')}
+        >
+          Scorecard
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={scorePane === 'rank'}
+          className={scorePane === 'rank' ? 'active' : ''}
+          onClick={() => setScorePane('rank')}
+        >
+          Ranking
+        </button>
       </div>
+      {scorePane === 'card' ? (
+        <div className="bubble">
+          <div className="row-between">
+            <h2>Scorecard</h2>
+            <button type="button" className="btn secondary" onClick={() => setShowOthers((v) => !v)}>
+              {showOthers ? 'Hide others' : 'Show all players'}
+            </button>
+          </div>
+          <ScorecardTable
+            room={room}
+            focusPlayerId={playerId}
+            showOthers={showOthers}
+            exportRef={exportRef}
+          />
+          {(room.status === 'finished' || room.status === 'playing') && (
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={savingPhoto}
+              onClick={() => void savePhoto()}
+            >
+              {savingPhoto ? 'Saving photo…' : 'Save scorecard photo'}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="bubble">
+          <h2>Ranking</h2>
+          {standings.length === 0 ? (
+            <p className="muted">No players yet.</p>
+          ) : (
+            <ol className="rank-list">
+              {standings.map((s) => (
+                <li key={s.playerId} className={s.playerId === playerId ? 'me' : undefined}>
+                  <span className="rank-place">{placeLabel(s.place)}</span>
+                  <span className="rank-name">{s.name}</span>
+                  <span className="rank-score">{showHero ? s.total : '—'}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
     </div>
   )
 
