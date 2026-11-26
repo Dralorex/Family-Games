@@ -33,6 +33,7 @@ export const UPDATES: UpdateNotes[] = [
     updated: [
       'A late player only catches up on the last round they missed; earlier rounds stay blank',
       'Starting next round writes that round’s worst score when the round ends',
+      'A player starting next round is shown in gray and is not waiting on a score',
     ],
     removed: [],
   },

@@ -52,7 +52,16 @@ export function ScorecardTable(props: {
             <tr>
               <th>Round</th>
               {players.map((p) => (
-                <th key={p.id} className={p.id === focusPlayerId ? 'me' : ''}>
+                <th
+                  key={p.id}
+                  className={[
+                    p.id === focusPlayerId ? 'me' : '',
+                    p.joinNextRound ? 'sitting-out' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  title={p.joinNextRound ? 'Starts next round — no score this round' : undefined}
+                >
                   {p.name}
                   {p.left ? ' (out)' : ''}
                 </th>
