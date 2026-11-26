@@ -22,6 +22,17 @@ export function ScorecardTable(props: {
     return all.filter((p) => p.id === focusPlayerId)
   }, [room.players, showOthers, focusPlayerId])
 
+  const scoreThrough = (playerId: string, through?: number): number | '—' => {
+    const row = room.scores[playerId] ?? {}
+    const has = Object.entries(row).some(([round, value]) => {
+      const n = Number(round)
+      if (through !== undefined && n > through) return false
+      return typeof value === 'number' && Number.isFinite(value)
+    })
+    if (!has) return '—'
+    return playerTotal(room.scores, playerId, through)
+  }
+
   const maxRound = Math.max(room.currentRound, room.completedRounds, 1)
   const showSums = shouldShowRunningSums(room.completedRounds)
 
@@ -41,7 +52,16 @@ export function ScorecardTable(props: {
             <tr>
               <th>Round</th>
               {players.map((p) => (
-                <th key={p.id} className={p.id === focusPlayerId ? 'me' : ''}>
+                <th
+                  key={p.id}
+                  className={[
+                    p.id === focusPlayerId ? 'me' : '',
+                    p.joinNextRound ? 'sitting-out' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  title={p.joinNextRound ? 'Starts next round — no score this round' : undefined}
+                >
                   {p.name}
                   {p.left ? ' (out)' : ''}
                 </th>
@@ -64,7 +84,7 @@ export function ScorecardTable(props: {
                   <th scope="row">Sum</th>
                   {players.map((p) => (
                     <td key={p.id} className={`total-cell ${p.id === focusPlayerId ? 'me' : ''}`}>
-                      {playerTotal(room.scores, p.id, row.round)}
+                      {scoreThrough(p.id, row.round)}
                     </td>
                   ))}
                 </tr>
@@ -75,7 +95,7 @@ export function ScorecardTable(props: {
               {players.map((p) => (
                 <td key={p.id} className={`total-cell ${p.id === focusPlayerId ? 'me' : ''}`}>
                   {room.completedRounds >= 1 || room.status === 'finished'
-                    ? playerTotal(room.scores, p.id)
+                    ? scoreThrough(p.id)
                     : '—'}
                 </td>
               ))}

@@ -6,6 +6,8 @@ import type {
 import type { EndMode, ScoreMap, ScorecardTemplateId, WinDirection } from '../core/score/types'
 import type { TimerState } from '../core/timer/types'
 
+export type RoundJoinChoice = 'this-round' | 'next-round'
+
 export interface RoomPlayer {
   id: string
   name: string
@@ -16,6 +18,15 @@ export interface RoomPlayer {
   controlledBy?: string
   /** Browser/tab session currently holding this seat */
   sessionId?: string
+  /**
+   * Mid-round join / rejoin / add-on-device: waiting for This Round vs Next Round.
+   * Blocks score entry until answered.
+   */
+  needsRoundJoinChoice?: boolean
+  /**
+   * Chose Next Round — skip open-round entry; get worst when the round advances.
+   */
+  joinNextRound?: boolean
 }
 
 export type EndVote = 'new-game' | 'change-names' | 'same-players' | 'leave'
@@ -100,6 +111,12 @@ export type RoomAction =
   | { type: 'rejoin'; name: string; playerId: string; sessionId: string; reclaimHost?: boolean }
   | { type: 'leave'; playerId: string; newHostId?: string }
   | { type: 'add-player'; fromId: string; player: RoomPlayer }
+  | {
+      type: 'set-round-join-choice'
+      fromId: string
+      targetPlayerId: string
+      choice: RoundJoinChoice
+    }
   | { type: 'set-timer-range'; minMs: number; maxMs: number; fromId: string }
   | { type: 'start-hot-potato'; fromId: string }
   | { type: 'explode'; fromId: string }
