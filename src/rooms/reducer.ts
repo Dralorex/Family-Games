@@ -16,7 +16,6 @@ import {
 } from '../core/neighborhood/types'
 import {
   allScoresEntered,
-  lastPlacePlayerId,
   nameTaken,
   shouldEndGame,
   worstScoreForRound,
@@ -87,22 +86,27 @@ function withRoundJoinPrompt(player: RoomPlayer, ask: boolean): RoomPlayer {
   }
 }
 
-function copyLastPlaceScores(
+/** One missed round gets that round’s worst score. Earlier rounds stay blank. */
+function applyMissedRoundScore(
   room: ScorecardRoom,
-  newPlayerId: string,
-  throughRound: number,
+  playerId: string,
+  round: number,
 ): ScorecardRoom {
-  if (throughRound < 1) return room
-  const others = playersList(room).filter((p) => p.id !== newPlayerId && !p.left)
-  if (others.length === 0) return room
-  const lastId = lastPlacePlayerId(others, room.scores, room.winDirection, throughRound)
-  if (!lastId) return room
-  const src = room.scores[lastId] ?? {}
-  const copied: Record<number, number> = { ...(room.scores[newPlayerId] ?? {}) }
-  for (let r = 1; r <= throughRound; r++) {
-    if (src[r] !== undefined) copied[r] = src[r]!
+  if (round < 1) return room
+  if (room.scores[playerId]?.[round] !== undefined) return room
+  const ids = playersList(room)
+    .filter((p) => p.id !== playerId && !p.left)
+    .map((p) => p.id)
+  const hasAny = ids.some((id) => typeof room.scores[id]?.[round] === 'number')
+  if (!hasAny) return room
+  const worst = worstScoreForRound(room.scores, ids, round, room.winDirection)
+  return {
+    ...room,
+    scores: {
+      ...room.scores,
+      [playerId]: { ...(room.scores[playerId] ?? {}), [round]: worst },
+    },
   }
-  return { ...room, scores: { ...room.scores, [newPlayerId]: copied } }
 }
 
 /** Keep past rounds; clear the open round so a returning player enters their own score. */
@@ -463,9 +467,6 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
               : [...hp.aliveIds, action.player.id]
         return { ...hp, aliveIds }
       }
-      if (room.kind === 'scorecard' && room.status === 'playing' && room.completedRounds >= 1) {
-        next = copyLastPlaceScores(next as ScorecardRoom, action.player.id, room.completedRounds)
-      }
       if (room.kind === 'neighborhood' && room.game && isOpenJoin(room.game)) {
         const nb = next as NeighborhoodRoom
         const used = new Set(Object.values(nb.game!.trays).map((t) => t.pieceId))
@@ -628,14 +629,10 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
         },
         room.status === 'playing',
       )
-      let next: ScorecardRoom = {
+      return {
         ...room,
         players: { ...room.players, [seat.id]: seat },
       }
-      if (room.status === 'playing' && room.completedRounds >= 1) {
-        next = copyLastPlaceScores(next, seat.id, room.completedRounds)
-      }
-      return next
     }
 
     case 'set-round-join-choice': {
@@ -644,7 +641,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
       const target = room.players[action.targetPlayerId]
       if (!target || target.left || !target.needsRoundJoinChoice) return room
       if (action.choice === 'this-round') {
-        return {
+        const seated: ScorecardRoom = {
           ...room,
           players: {
             ...room.players,
@@ -655,6 +652,7 @@ export function applyAction(room: RoomState, action: RoomAction, now = Date.now(
             },
           },
         }
+        return applyMissedRoundScore(seated, action.targetPlayerId, room.currentRound - 1)
       }
       // Next Round — clear any open-round score so worst is applied at advance
       let scores = room.scores

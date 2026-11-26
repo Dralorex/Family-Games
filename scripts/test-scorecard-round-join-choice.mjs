@@ -43,7 +43,7 @@ room = applyAction(room, {
   player: { id: 'p3', name: 'New', joinedAt: 3, sessionId: 's3' },
 })
 assert.equal(room.players.p3.needsRoundJoinChoice, true)
-assert.equal(room.scores.p3?.[1], 40, 'copies last-place (Pat) for completed rounds')
+assert.equal(room.scores.p3?.[1], undefined, 'earlier rounds stay blank until a choice')
 assert.equal(room.scores.p3?.[2], undefined)
 
 // Next Round → deferred, not missing for readiness
@@ -75,7 +75,8 @@ assert.ok(allScoresEntered(Object.values(room.players), room.scores, 2))
 
 room = applyAction(room, { type: 'next-round', fromId: 'h1' })
 assert.equal(room.currentRound, 3)
-assert.equal(room.scores.p3?.[2], 12, 'got worst (highest for low-win) of round 2')
+assert.equal(room.scores.p3?.[1], undefined, 'rounds before the missed one stay blank')
+assert.equal(room.scores.p3?.[2], 12, 'missed round 2 gets that round’s worst score')
 assert.equal(room.players.p3.joinNextRound, false)
 
 // Add-on-device This Round
@@ -92,6 +93,8 @@ room = applyAction(room, {
   choice: 'this-round',
 })
 assert.equal(room.players.p4.needsRoundJoinChoice, false)
+assert.equal(room.scores.p4?.[1], undefined, 'older rounds stay blank')
+assert.equal(room.scores.p4?.[2], 12, 'previous round gets that round’s worst score')
 room = applyAction(room, {
   type: 'set-score',
   fromId: 'h1',

@@ -28,10 +28,12 @@ export const UPDATES: UpdateNotes[] = [
     pr: 20,
     title: 'Scorecard This Round / Next Round mid-join',
     added: [
-      'Mid-round join, add-on-device, and leave/rejoin ask This Round or Next Round',
-      'This Round keeps score entry open; Next Round applies worst when the round ends',
+      'Joining on your phone, or adding a player on someone else’s, asks if they are playing this round or starting next',
     ],
-    updated: [],
+    updated: [
+      'A late player only catches up on the last round they missed; earlier rounds stay blank',
+      'Starting next round writes that round’s worst score when the round ends',
+    ],
     removed: [],
   },
   {

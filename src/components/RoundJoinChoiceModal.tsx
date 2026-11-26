@@ -9,12 +9,12 @@ export function RoundJoinChoiceModal(props: {
       <div className="bubble modal-card">
         <h2>Join round {props.currentRound}?</h2>
         <p>
-          Are you participating in this current round or starting on the next round?
+          Is <strong>{props.playerName}</strong> joining for this round or starting next round?
         </p>
         <p className="muted">
-          For <strong>{props.playerName}</strong>: This Round lets you enter a score now. Next Round
-          applies the worst score for round {props.currentRound} when it ends, then you play from
-          there.
+          This Round: they enter a score now, and the previous round gets that round’s worst score.
+          Next Round: when this round ends, it gets that round’s worst score. Earlier rounds stay
+          blank.
         </p>
         <div className="modal-actions">
           <button type="button" className="btn primary" onClick={props.onThisRound}>
