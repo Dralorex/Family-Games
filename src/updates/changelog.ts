@@ -24,6 +24,20 @@ export interface UpdateNotes {
 /** Newest first. Only append at the top when opening a brand-new PR. */
 export const UPDATES: UpdateNotes[] = [
   {
+    version: '0.0.20',
+    pr: 20,
+    title: 'Scorecard This Round / Next Round mid-join',
+    added: [
+      'Joining on your phone, or adding a player on someone else’s, asks if they are playing this round or starting next',
+    ],
+    updated: [
+      'A late player only catches up on the last round they missed; earlier rounds stay blank',
+      'Starting next round writes that round’s worst score when the round ends',
+      'A player starting next round is shown in gray and is not waiting on a score',
+    ],
+    removed: [],
+  },
+  {
     version: '0.0.19',
     pr: 19,
     title: 'Neighborhood deeds, board inspect, and trade popups',

@@ -6,6 +6,7 @@ import { EndGameMenu } from '../components/EndGameMenu'
 import { HostLeaveModal } from '../components/HostLeaveModal'
 import { HostReturnPrompt } from '../components/HostReturnPrompt'
 import { Podium } from '../components/Podium'
+import { RoundJoinChoiceModal } from '../components/RoundJoinChoiceModal'
 import { ScorecardTable, exportScorecardPng } from '../components/ScorecardTable'
 import { TabShell, type RoomTab } from '../components/TabShell'
 import { defaultNextHostId } from '../rooms/reducer'
@@ -64,14 +65,33 @@ export function ScorecardRoomView(props: {
       ),
     [players, playerId],
   )
+  const scoreEntrySeats = useMemo(
+    () => controlled.filter((p) => !p.needsRoundJoinChoice && !p.joinNextRound),
+    [controlled],
+  )
+  const pendingRoundChoice = useMemo(
+    () => controlled.find((p) => p.needsRoundJoinChoice),
+    [controlled],
+  )
+  const deferredNextRound = useMemo(
+    () => controlled.filter((p) => p.joinNextRound),
+    [controlled],
+  )
   const [entryIndex, setEntryIndex] = useState(0)
-  const entryTarget = controlled[Math.min(entryIndex, Math.max(0, controlled.length - 1))]
+  const entryTarget =
+    scoreEntrySeats[Math.min(entryIndex, Math.max(0, scoreEntrySeats.length - 1))]
   const [draft, setDraft] = useState('')
   const [showOthers, setShowOthers] = useState(true)
   const [addName, setAddName] = useState('')
   const [addError, setAddError] = useState('')
   const exportRef = useRef<HTMLDivElement>(null)
   const [savingPhoto, setSavingPhoto] = useState(false)
+
+  useEffect(() => {
+    if (entryIndex >= scoreEntrySeats.length && scoreEntrySeats.length > 0) {
+      setEntryIndex(0)
+    }
+  }, [entryIndex, scoreEntrySeats.length])
 
   useEffect(() => {
     if (!entryTarget) return
@@ -142,7 +162,7 @@ export function ScorecardRoomView(props: {
       round: room.currentRound,
       value,
     })
-    if (entryIndex < controlled.length - 1) {
+    if (entryIndex < scoreEntrySeats.length - 1) {
       setEntryIndex((i) => i + 1)
     }
   }
@@ -281,6 +301,29 @@ export function ScorecardRoomView(props: {
         />
       ) : null}
 
+      {pendingRoundChoice ? (
+        <RoundJoinChoiceModal
+          playerName={pendingRoundChoice.name}
+          currentRound={room.currentRound}
+          onThisRound={() =>
+            send({
+              type: 'set-round-join-choice',
+              fromId: playerId,
+              targetPlayerId: pendingRoundChoice.id,
+              choice: 'this-round',
+            })
+          }
+          onNextRound={() =>
+            send({
+              type: 'set-round-join-choice',
+              fromId: playerId,
+              targetPlayerId: pendingRoundChoice.id,
+              choice: 'next-round',
+            })
+          }
+        />
+      ) : null}
+
       {room.status === 'lobby' ? (
         <div className="bubble">
           <ul className="player-list">
@@ -367,42 +410,56 @@ export function ScorecardRoomView(props: {
             {room.totalRounds ? ` / ${room.totalRounds}` : ''}
             {room.pointLimit ? ` · limit ${room.pointLimit}` : ''}
           </p>
-          {controlled.length > 1 ? (
+          {deferredNextRound.length > 0 ? (
             <p className="muted">
-              Entering for {entryTarget?.name} ({entryIndex + 1}/{controlled.length})
+              Starting next round:{' '}
+              {deferredNextRound.map((p) => p.name).join(', ')} (worst score this round)
             </p>
           ) : null}
-          <label className="field">
-            <span>{entryTarget ? `${entryTarget.name}'s score` : 'Your score'}</span>
-            <input
-              type="number"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitScore()
-              }}
-            />
-          </label>
-          <button type="button" className="btn primary" onClick={submitScore}>
-            {entryTarget && room.scores[entryTarget.id]?.[room.currentRound] !== undefined
-              ? 'Update score'
-              : 'Submit score'}
-          </button>
-          {controlled.length > 1 ? (
-            <div className="chip-row">
-              {controlled.map((p, i) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`chip ${i === entryIndex ? 'selected' : ''}`}
-                  onClick={() => setEntryIndex(i)}
-                >
-                  {p.name}
-                  {room.scores[p.id]?.[room.currentRound] !== undefined ? ' ✓' : ''}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          {scoreEntrySeats.length > 0 ? (
+            <>
+              {scoreEntrySeats.length > 1 ? (
+                <p className="muted">
+                  Entering for {entryTarget?.name} ({entryIndex + 1}/{scoreEntrySeats.length})
+                </p>
+              ) : null}
+              <label className="field">
+                <span>{entryTarget ? `${entryTarget.name}'s score` : 'Your score'}</span>
+                <input
+                  type="number"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitScore()
+                  }}
+                />
+              </label>
+              <button type="button" className="btn primary" onClick={submitScore}>
+                {entryTarget && room.scores[entryTarget.id]?.[room.currentRound] !== undefined
+                  ? 'Update score'
+                  : 'Submit score'}
+              </button>
+              {scoreEntrySeats.length > 1 ? (
+                <div className="chip-row">
+                  {scoreEntrySeats.map((p, i) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`chip ${i === entryIndex ? 'selected' : ''}`}
+                      onClick={() => setEntryIndex(i)}
+                    >
+                      {p.name}
+                      {room.scores[p.id]?.[room.currentRound] !== undefined ? ' ✓' : ''}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : pendingRoundChoice ? (
+            <p className="muted">Choose This Round or Next Round to continue.</p>
+          ) : (
+            <p className="muted">You’re set for the next round — no score to enter now.</p>
+          )}
 
           <div className="add-player-row">
             <input
@@ -423,7 +480,14 @@ export function ScorecardRoomView(props: {
             <div className="gm-next">
               {!ready ? (
                 <p className="warn">
-                  Waiting on: {missing.map((id) => room.players[id]?.name ?? 'player').join(', ')}
+                  Waiting on:{' '}
+                  {missing
+                    .map((id) => {
+                      const p = room.players[id]
+                      if (!p) return 'player'
+                      return p.needsRoundJoinChoice ? `${p.name} (choose round)` : p.name
+                    })
+                    .join(', ')}
                 </p>
               ) : (
                 <p className="ok">Everyone has entered a score.</p>
